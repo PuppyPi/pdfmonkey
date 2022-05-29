@@ -12,7 +12,7 @@ import rebound.annotations.semantic.allowedoperations.WritableValue;
 import rebound.annotations.semantic.reachability.ThrowAwayValue;
 import rebound.dataformats.pdf.BasicPDFPage;
 import rebound.dataformats.texttable.util.TextTableUtilities;
-import rebound.exceptions.NonSingletonException;
+import rebound.exceptions.NotSingletonException;
 import rebound.util.collections.SimpleTable;
 import technology.tabula.Pair;
 import technology.tabula.RectangularTextContainer;
@@ -167,7 +167,7 @@ public class PDFMonkeyBusiness
 	
 	
 	@ThrowAwayValue
-	protected static SimpleTable<String> convertTabulaTableToRebound(List<Table> tabulaTables) throws NonSingletonException
+	protected static SimpleTable<String> convertTabulaTableToRebound(List<Table> tabulaTables) throws NotSingletonException
 	{
 		int n = tabulaTables.size();
 		
@@ -203,7 +203,7 @@ public class PDFMonkeyBusiness
 		}
 		else
 		{
-			throw new NonSingletonException("Tabula found multiple ("+tabulaTables.size()+") tables!!");
+			throw new NotSingletonException("Tabula found multiple ("+tabulaTables.size()+") tables!!");
 		}
 	}
 	

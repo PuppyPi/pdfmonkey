@@ -7,7 +7,6 @@ import static rebound.file.FSUtilities.*;
 import static rebound.hci.util.awt.JavaGUIUtilities.*;
 import static rebound.math.geom2d.AffineTransformUtilities.*;
 import static rebound.math.geom2d.GeometryUtilities2D.*;
-import static rebound.testing.TestingUtilities.*;
 import static rebound.util.collections.BasicCollectionUtilities.*;
 import static rebound.util.collections.CollectionUtilities.*;
 import java.awt.Color;
@@ -15,10 +14,6 @@ import java.awt.Container;
 import java.awt.EventQueue;
 import java.awt.Font;
 import java.awt.Rectangle;
-import java.awt.datatransfer.Transferable;
-import java.awt.dnd.DnDConstants;
-import java.awt.dnd.DropTarget;
-import java.awt.dnd.DropTargetDropEvent;
 import java.awt.event.KeyEvent;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
@@ -59,11 +54,12 @@ import rebound.hci.graphics2d.gui.simpletrackers.buttons.ButtonInputReceiver;
 import rebound.hci.graphics2d.gui.simpletrackers.buttons.SimpleButtonStateTracker;
 import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.DragReceiver;
 import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.PointingMotionInputReceiver.AbsolutePointingMotionInputReceiver;
-import rebound.hci.util.awt.JavaGUIUtilities;
+import rebound.hci.util.awt.SimpleDragAndDrop;
 import rebound.io.util.FSIOUtilities;
 import rebound.math.SmallIntegerMathUtilities;
 import rebound.math.geom.ints.analogoustojavaawt.IntPoint;
 import rebound.math.geom.ints.analogoustojavaawt.IntRectangle;
+import rebound.testing.WidespreadTestingUtilities;
 import rebound.util.collections.NestedListsSimpleTable;
 import rebound.util.collections.SimpleTable;
 import rebound.util.crypto.CryptographyAndDigestUtilities;
@@ -215,53 +211,10 @@ extends JFrame
 		
 		
 		
-		this.setDropTarget(new DropTarget()
+		SimpleDragAndDrop.setupSimpleFilesDrag(this, data ->
 		{
-			private static final long serialVersionUID = 1L;
-			
-			@Override
-			public synchronized void drop(DropTargetDropEvent dtde)
-			{
-				//#ProEventDriven:
-				//One issue with the two-threads model is that (I think!) we can't (safely) give proper information from the user of the engine as to whether *it* supports/used what was dropped!!    (we can only say if *we*--the engine--support merely decoding the format!)
-				//but oh well, that's not a big enough deal to warrant switching the entire model I think X'D
-				
-				
-				Transferable t = dtde.getTransferable();
-				
-				
-				
-				//Try files! :D
-				{
-					Set<File> f;
-					
-					//					try
-					//					{
-					f = JavaGUIUtilities.getFilesTransferrableContents(t, () -> dtde.acceptDrop(DnDConstants.ACTION_LINK));
-					//					}
-					//					catch (IOException exc)
-					//					{
-					//						String msg = "I/O Error receiving Drag&Drop drop!!\n";
-					//						msg += ExceptionPrettyPrintingUtilities.getNicelyFormattedStandardStacktrace(exc);
-					//						System.err.println(msg);
-					//						dtde.rejectDrop();
-					//						return;
-					//					}
-					
-					if (f != null)
-					{
-						dtde.dropComplete(true);
-						
-						handleFilesDropped(f);
-						
-						return;
-					}
-				}
-				
-				
-				
-				dtde.rejectDrop();
-			}
+			if (data instanceof Set)
+				handleFilesDropped(data);
 		});
 		
 		
@@ -431,13 +384,13 @@ extends JFrame
 		
 		if (other.hasPDFLoaded())
 		{
-			asrt(this.hasPDFLoaded());
+			WidespreadTestingUtilities.asrt(this.hasPDFLoaded());
 			
 			this.pdfWorld.setDisplaySettingsFromOtherOfSameRuntimeTypeOfIgnoreIfImmutable(other.pdfWorld);
 		}
 		else
 		{
-			asrt(!this.hasPDFLoaded());
+			WidespreadTestingUtilities.asrt(!this.hasPDFLoaded());
 		}
 		
 		this.zoomer.setZoomSettingsFromOther(other.zoomer);
@@ -567,7 +520,7 @@ extends JFrame
 				
 				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace);
 				
-				insertRowExpandingIP(table, infoLine, "");
+				appendRowExpandingIP(table, infoLine, "");
 				
 				setClipboardText(RCSV.serializeRCSV(table));
 				temporarilySetStatusBarText("Done extracting table!");
@@ -590,7 +543,7 @@ extends JFrame
 			
 			List<String> infoLine = produceInfoRecord(pageIndexZerobased, null);
 			
-			insertRowExpandingIP(table, infoLine, "");
+			appendRowExpandingIP(table, infoLine, "");
 			
 			setClipboardText(RCSV.serializeRCSV(table));
 			temporarilySetStatusBarText("Done extracting table!");
