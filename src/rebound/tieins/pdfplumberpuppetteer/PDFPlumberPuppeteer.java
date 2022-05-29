@@ -96,7 +96,7 @@ implements Closeable
 		return toIntNonnull(readResponseWhenSuccessIsUnary());
 	}
 	
-	public void closePDFFile(String pathname) throws IOException
+	public void closePDFFile() throws IOException
 	{
 		write(listof("close"));
 		readResponseWhenSuccessIsNullary();
