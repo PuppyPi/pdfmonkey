@@ -1,5 +1,6 @@
 package rebound.apps.pdfmonkey;
 
+import static java.util.Objects.*;
 import static rebound.text.StringUtilities.*;
 import static rebound.util.collections.BasicCollectionUtilities.*;
 import static rebound.util.collections.CollectionUtilities.*;
@@ -52,18 +53,25 @@ public class PDFMonkeyBusiness
 	
 	public static String extractEntirePageAsText(BasicPDFPage page) throws Exception
 	{
-		//Todo something else more proper ^^'
+		requireNonNull(page);
+		
+		//Todo something else more proper than converting to CSV then turning that into text ^^' X'D
 		return convertTabulaCSVOutputToText(_extractEntirePageAsTableCSV(page));
 	}
 	
 	public static String extractRegionOfPageAsText(BasicPDFPage page, Rectangle2D regionInPageSpace) throws Exception
 	{
-		//Todo something else more proper ^^'
+		requireNonNull(page);
+		requireNonNull(regionInPageSpace);
+		
+		//Todo something else more proper than converting to CSV then turning that into text ^^' X'D
 		return convertTabulaCSVOutputToText(_extractRegionOfPageAsTableCSV(page, regionInPageSpace));
 	}
 	
 	protected static String convertTabulaCSVOutputToText(@ReadonlyValue SimpleTable<String> table)
 	{
+		requireNonNull(table);
+		
 		StringBuilder buff = new StringBuilder();
 		
 		int w = table.getNumberOfColumns();
@@ -109,6 +117,8 @@ public class PDFMonkeyBusiness
 	@ThrowAwayValue
 	protected static SimpleTable<String> _extractEntirePageAsTableCSV(BasicPDFPage page) throws Exception
 	{
+		requireNonNull(page);
+		
 		File file = page.getContainingFile().getLocalFileIfApplicable();
 		int pageIndex = page.getPageIndex();
 		
@@ -124,7 +134,14 @@ public class PDFMonkeyBusiness
 	@ThrowAwayValue
 	protected static SimpleTable<String> _extractRegionOfPageAsTableCSV(BasicPDFPage page, Rectangle2D regionInPageSpace) throws Exception
 	{
+		requireNonNull(page);
+		requireNonNull(regionInPageSpace);
+		
 		File file = page.getContainingFile().getLocalFileIfApplicable();
+		
+		if (file == null)
+			throw new IllegalArgumentException("Currently requires an actual file to use, sorry ^^'");
+			
 		int pageIndex = page.getPageIndex();
 		
 		TableExtractor tableExtractor = new TableExtractor();
@@ -132,9 +149,14 @@ public class PDFMonkeyBusiness
 		tableExtractor.setMethod(ExtractionMethod.DECIDE);
 		
 		
+		//Uhhhhhh Tabula you don't use actual PDF coordinates?! X'D
+		//    TODO Debug this for PDFs with a page origin (ie, page.getPageBoundaries().getMinX/Y()) which isn't [0, 0]   X'3
+		//double y = regionInPageSpace.getY();
+		double y = page.getPageBoundaries().getHeight() - regionInPageSpace.getY() - regionInPageSpace.getHeight();
+		
 		//NOTE THE FLIPPED X AND Y RELATIVE TO WIDTH/HEIGHT
 		//TABULA WHYYYYYYYYYYY? XD
-		TabulaRectangle tr = new TabulaRectangle((float)regionInPageSpace.getY(), (float)regionInPageSpace.getX(), (float)regionInPageSpace.getWidth(), (float)regionInPageSpace.getHeight());
+		TabulaRectangle tr = new TabulaRectangle((float)y, (float)regionInPageSpace.getX(), (float)regionInPageSpace.getWidth(), (float)regionInPageSpace.getHeight());
 		
 		List<Pair<AreaCalculationMode, TabulaRectangle>> pageAreas = listof(new Pair<>(AreaCalculationMode.ABSOLUTE_AREA_CALCULATION_MODE, tr));
 		Tabula t = new Tabula(pageAreas, listof(pageIndex + 1), null, tableExtractor);
@@ -177,7 +199,7 @@ public class PDFMonkeyBusiness
 				r++;
 			}
 			
-			return reboundTable;
+			return reboundTable == null ? newTable() : reboundTable;
 		}
 		else
 		{

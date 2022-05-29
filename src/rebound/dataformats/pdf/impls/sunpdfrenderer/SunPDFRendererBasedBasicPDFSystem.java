@@ -1,5 +1,6 @@
 package rebound.dataformats.pdf.impls.sunpdfrenderer;
 
+import static rebound.math.geom2d.GeometryUtilities2D.*;
 import java.awt.Image;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
@@ -99,9 +100,12 @@ implements BasicPDFSystem
 			
 			
 			@Override
-			public Image getRenderedImage(int imageWidth, int imageHeight, Rectangle2D clipInPageSpace)
+			public Image getRenderedImage(double xInDisplaySpace, double yInDisplaySpace, int imageWidth, int imageHeight, double scale)
 			{
-				// get the new image
+				Rectangle2D clipInPageSpace = rect(xInDisplaySpace / scale, yInDisplaySpace / scale, imageWidth / scale, imageHeight / scale);
+				
+				//System.out.println(clipInPageSpace + " ["+imageWidth+" x "+imageHeight+"]");  //debug
+				
 				return implPage.getImage(imageWidth, imageHeight, clipInPageSpace, null, true, true);
 			}
 		}

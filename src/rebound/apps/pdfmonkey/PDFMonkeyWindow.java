@@ -1,33 +1,30 @@
 package rebound.apps.pdfmonkey;
 
 import static java.awt.event.KeyEvent.*;
+import static java.util.Collections.*;
+import static java.util.Objects.*;
 import static rebound.file.FSUtilities.*;
 import static rebound.hci.util.awt.JavaGUIUtilities.*;
 import static rebound.math.geom2d.AffineTransformUtilities.*;
 import static rebound.math.geom2d.GeometryUtilities2D.*;
-import static rebound.util.BasicExceptionUtilities.*;
+import static rebound.testing.TestingUtilities.*;
+import static rebound.util.collections.BasicCollectionUtilities.*;
 import static rebound.util.collections.CollectionUtilities.*;
-import java.awt.AWTEvent;
 import java.awt.Color;
-import java.awt.Component;
+import java.awt.Container;
 import java.awt.EventQueue;
 import java.awt.Font;
-import java.awt.Graphics2D;
-import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.datatransfer.Transferable;
 import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
 import java.awt.dnd.DropTargetDropEvent;
-import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseWheelEvent;
-import java.awt.geom.AffineTransform;
-import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -39,23 +36,39 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import rebound.apps.pdfmonkey.actualpdfrendering.RasterBasedRendererOnPDF;
+import rebound.apps.pdfmonkey.actualpdfrendering.RendererOnPDF;
+import rebound.bits.DataEncodingUtilities;
 import rebound.dataformats.pdf.BasicPDFFile;
 import rebound.dataformats.pdf.BasicPDFPage;
 import rebound.dataformats.pdf.BasicPDFSystem;
-import rebound.dataformats.pdf.util.BasicPDFPageRenderableRasterAdapter;
 import rebound.dataformats.texttable.rcsv.RCSV;
 import rebound.exceptions.BinarySyntaxException;
-import rebound.happygames.shared.util.ButtonInputReceiver;
-import rebound.happygames.shared.util.PointingMotionInputReceiver.AbsolutePointingMotionInputReceiver;
-import rebound.happygames.shared.util.SimpleAbsoluteCursorPositionTracker;
-import rebound.happygames.shared.util.SimpleButtonStateTracker;
+import rebound.hci.graphics2d.gui.TraceableCollage.PointLocationResult;
+import rebound.hci.graphics2d.gui.TraceableCollage.RectangleSinglePageLocationResult;
+import rebound.hci.graphics2d.gui.awt.AwtAndSimpleTrackersUtilities;
+import rebound.hci.graphics2d.gui.awt.AwtAndSimpleTrackersUtilities.MouseSuite;
+import rebound.hci.graphics2d.gui.awt.components.AwtPaneForReComponent;
 import rebound.hci.graphics2d.gui.awt.components.SolidColorComponent;
+import rebound.hci.graphics2d.gui.recomponent.components.ReComponentZoomerWithMouseInput;
+import rebound.hci.graphics2d.gui.recomponent.components.ReComponentZoomerWithMouseInput.WheelMode;
+import rebound.hci.graphics2d.gui.recomponent.components.RectangleDraggingOverlay;
+import rebound.hci.graphics2d.gui.simpletrackers.ButtonRepeater;
+import rebound.hci.graphics2d.gui.simpletrackers.ButtonRepeater.RepeatableKeyCombinationAndAction;
+import rebound.hci.graphics2d.gui.simpletrackers.buttons.ButtonInputReceiver;
+import rebound.hci.graphics2d.gui.simpletrackers.buttons.SimpleButtonStateTracker;
+import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.DragReceiver;
+import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.PointingMotionInputReceiver.AbsolutePointingMotionInputReceiver;
 import rebound.hci.util.awt.JavaGUIUtilities;
+import rebound.io.util.FSIOUtilities;
 import rebound.math.SmallIntegerMathUtilities;
 import rebound.math.geom.ints.analogoustojavaawt.IntPoint;
 import rebound.math.geom.ints.analogoustojavaawt.IntRectangle;
-import rebound.math.geom2d.SmallIntegerBasicGeometry2D;
-import rebound.math.geom2d.TranslationAndUniformScaleTransform2D;
+import rebound.util.collections.NestedListsSimpleTable;
+import rebound.util.collections.SimpleTable;
+import rebound.util.crypto.CryptographyAndDigestUtilities;
+import rebound.util.crypto.CryptographyAndDigestUtilities.StandardDigestType;
+import rebound.util.functional.FunctionInterfaces.UnaryFunction;
 
 public class PDFMonkeyWindow
 extends JFrame
@@ -63,31 +76,90 @@ extends JFrame
 	private static final long serialVersionUID = 1L;
 	
 	
-	protected final PDFMonkeyApp app;
-	protected BasicPDFAwtComponentWrapper pdfComponent;
+	protected final @Nonnull PDFMonkeyApp app;
+	protected final @Nonnull UnaryFunction<RendererOnPDF, PDFWorldReComponentWrapper> pdfWorldMaker;
+	
+	protected final @Nonnull AwtPaneForReComponent awtAdapter;
+	protected final @Nonnull RectangleDraggingOverlay selectionDragger;
+	protected final @Nonnull ReComponentZoomerWithMouseInput zoomer;
+	protected @Nullable PDFWorldReComponentWrapper pdfWorld;
+	protected @Nullable RendererOnPDF pdf;
+	protected BasicPDFFile pdfFile;
+	protected String pdfFileLocatorFormatted;
+	protected String pdfFileHashFormatted;
+	
+	
 	
 	protected SolidColorComponent divider;
-	protected SolidColorComponent pageIndexLabelBackdrop; //???
+	protected SolidColorComponent pageIndexLabelBackdrop;
 	protected JLabel pageIndexLabel;
-	protected int pageBorderThicknessInPixels = 10;
 	
-	protected boolean lockMode = true;
-	protected double wheelScrollModeFactor = 50;  //pixels per wheel-click-amount ^wwww^
 	protected Color dragBoxColorExtractTable = new Color(192, 0, 0);
 	protected Color dragBoxColorExtractText = new Color(64, 64, 192);
+	
+	
 	protected boolean showMouseCoordinatesInPageSpace = true;
 	
+	protected MouseSuite trackers;
+	protected ButtonRepeater buttonRepeater = new ButtonRepeater();
 	
-	public PDFMonkeyWindow(PDFMonkeyApp app)
+	
+	
+	
+	public static interface DragOperation
+	{
+		public void run(int pageIndexZerobased, Rectangle2D regionInPageSpace);
+	}
+	
+	protected DragOperation dragOperation = null;
+	
+	protected final DragOperation extractTextOperation = this::extractText;
+	protected final DragOperation extractTableOperation = this::extractTable;
+	
+	
+	
+	
+	
+	
+	public PDFMonkeyWindow(@Nonnull PDFMonkeyApp app, UnaryFunction<RendererOnPDF, PDFWorldReComponentWrapper> pdfWorldMaker)
 	{
 		super("PDF Monkey!! Ook! :D");
 		
-		this.enableEvents(AWTEvent.KEY_EVENT_MASK | AWTEvent.FOCUS_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK | AWTEvent.MOUSE_MOTION_EVENT_MASK | AWTEvent.MOUSE_WHEEL_EVENT_MASK);
+		this.app = requireNonNull(app);
+		this.pdfWorldMaker = pdfWorldMaker;
 		
-		this.app = app;
-		this.pdfComponent = new BasicPDFAwtComponentWrapperStandardImplementation();
+		this.awtAdapter = new AwtPaneForReComponent();
 		
-		this.setContentPane(new JPanel(null, false)
+		this.zoomer = new ReComponentZoomerWithMouseInput();
+		
+		this.selectionDragger = new RectangleDraggingOverlay(zoomer, new DragReceiver()
+		{
+			@Override
+			public void dragStarted(int startX, int startY)
+			{
+			}
+			
+			@Override
+			public void dragUpdated(int startX, int startY, int currentX, int currentY)
+			{
+			}
+			
+			@Override
+			public void dragCompleted(int startX, int startY, int endX, int endY)
+			{
+				Rectangle r = intrectFromTwoPoints(startX, startY, endX, endY);
+				ourDragCompleted(r.x, r.y, r.width, r.height);
+			}
+			
+			@Override
+			public void dragCancelled()
+			{
+			}
+		});
+		
+		awtAdapter.setContainedComponent(selectionDragger);
+		
+		Container cp = new JPanel(null, false)
 		{
 			private static final long serialVersionUID = 1L;
 			
@@ -104,12 +176,8 @@ extends JFrame
 				int pdfPaneHeight = h - (pageLabelHeight + dividerHeight);
 				
 				
-				if (hasPDFLoaded())
-				{
-					Component currentAwtComponent = pdfComponent.getAWTComponent();
-					currentAwtComponent.setLocation(0, 0);
-					currentAwtComponent.setSize(w, pdfPaneHeight);
-				}
+				awtAdapter.setLocation(0, 0);
+				awtAdapter.setSize(w, pdfPaneHeight);
 				
 				divider.setLocation(0, pdfPaneHeight);
 				divider.setSize(w, dividerHeight);
@@ -119,24 +187,30 @@ extends JFrame
 				pageIndexLabelBackdrop.setLocation(0, pdfPaneHeight + dividerHeight);
 				pageIndexLabelBackdrop.setSize(w, pageLabelHeight);
 			}
-		});
+		};
+		
+		
+		
+		cp.add(awtAdapter);
 		
 		
 		Color pageIndexLabelBG = new Color(192, 192, 255);
 		
 		pageIndexLabel = new JLabel();
 		pageIndexLabel.setFont(Font.decode("Arial-12"));
-		pageIndexLabel.setBackground(pageIndexLabelBG);
 		pageIndexLabel.setForeground(new Color(0, 0, 128));
 		pageIndexLabel.setHorizontalAlignment(JLabel.CENTER);
 		pageIndexLabel.setVerticalAlignment(JLabel.CENTER);
-		this.getContentPane().add(pageIndexLabel);
+		cp.add(pageIndexLabel);
 		
 		divider = new SolidColorComponent(new Color(0, 0, 128));
-		this.getContentPane().add(divider);
+		cp.add(divider);
 		
 		pageIndexLabelBackdrop = new SolidColorComponent(pageIndexLabelBG);  //pageIndexLabel.setBackground(pageIndexLabelBG) wasn't doing anything apparently!!  (or JLabels just never/unreliably draw their background???)   \o/
-		this.getContentPane().add(pageIndexLabelBackdrop);
+		cp.add(pageIndexLabelBackdrop);
+		
+		
+		this.setContentPane(cp);
 		
 		
 		
@@ -190,67 +264,17 @@ extends JFrame
 			}
 		});
 		
+		
+		initKeyTracker();
+		
+		
 		recalculateStatusBar();
 		doLayout();
 	}
 	
-	
-	
-	protected void paintPDFOverlay(Graphics2D g)
+	public @Nullable IntPoint getCurrentMousePositionInPDFWorldSpace()
 	{
-		if (hasPDFLoaded())
-		{
-			//Paint the page borderrrrr!! :DD
-			{
-				//todo account for rounding better ^^'
-				IntRectangle closestPageBorder = roundIntRectOutwards(pdfComponent.getCurrentPageBorderInDisplaySpace());
-				
-				int valueInnermost = 189;
-				int valueOutermost = 255;
-				
-				
-				IntRectangle b = new IntRectangle(closestPageBorder);
-				for (int i = 0; i < pageBorderThicknessInPixels; i++)
-				{
-					int value = (valueOutermost - valueInnermost) * i / (pageBorderThicknessInPixels - 1) + valueInnermost;
-					g.setColor(new Color(value, value, value));
-					
-					g.drawRect(b.x - 1, b.y - 1, b.width + 1, b.height + 1);
-					
-					b.x--;
-					b.y--;
-					b.width += 2;
-					b.height += 2;
-				}
-			}
-			
-			
-			
-			//Paint the current drag box rectangle!! :DDD
-			{
-				if (inDrag == DragType.OperationRegionExtractTable || inDrag == DragType.OperationRegionExtractText)
-				{
-					IntPoint now = mouseTracker.getCurrentCursorPosition();
-					
-					if (now != null)
-					{
-						IntRectangle dragBox = SmallIntegerBasicGeometry2D.irectTwoPoints(dragStart, now);
-						
-						Color dragBoxColor = inDrag == DragType.OperationRegionExtractTable ? dragBoxColorExtractTable : dragBoxColorExtractText;
-						
-						g.setColor(dragBoxColor);
-						g.drawRect(dragBox.x - 1, dragBox.y - 1, dragBox.width + 1, dragBox.height + 1);
-					}
-				}
-			}
-		}
-	}
-	
-	protected IntRectangle getPagePlusBorderInDisplaySpace()
-	{
-		//todo account for rounding better ^^'
-		IntRectangle closestPageBorder = roundIntRectOutwards(pdfComponent.getCurrentPageBorderInDisplaySpace());
-		return SmallIntegerBasicGeometry2D.irect(closestPageBorder.x - 1 - pageBorderThicknessInPixels, closestPageBorder.x - 1 - pageBorderThicknessInPixels, closestPageBorder.width + 1 + pageBorderThicknessInPixels*2, closestPageBorder.height + 1 + pageBorderThicknessInPixels*2);
+		return pdfWorld == null ? null : pdfWorld.getComponent().getCurrentCursorPosition();
 	}
 	
 	
@@ -260,45 +284,93 @@ extends JFrame
 	
 	
 	
-	public void displayFile(@Nullable BasicPDFFile pdfFile)
+	
+	protected @Nonnull PDFWorldReComponentWrapper newPDFWorld(RendererOnPDF pdf)
+	{
+		PDFWorldReComponentWrapper w = pdfWorldMaker.f(pdf);
+		
+		w.getComponent().getMouseMotionBroadcaster().addReceiver(new AbsolutePointingMotionInputReceiver()
+		{
+			@Override
+			public void pointingLost()
+			{
+				recalculateStatusBar();
+			}
+			
+			@Override
+			public void pointingAbsoluteMotion(int newX, int newY)
+			{
+				recalculateStatusBar();
+			}
+		});
+		
+		return w;
+	}
+	
+	
+	
+	public void displayPDF(@Nullable BasicPDFFile pdfFile)
+	{
+		RendererOnPDF pdf = new RasterBasedRendererOnPDF(pdfFile);
+		displayPDF(pdf, pdfFile);
+	}
+	
+	
+	public void displayPDF(RendererOnPDF pdf, @Nullable BasicPDFFile pdfFile)
 	{
 		if (hasPDFLoaded())
 		{
-			pdfComponent.setOverlay(null);
-			pdfComponent.setTransformFilter(null);
 			clearAllInputActionsDueToPDFFileChanging();
-			this.getContentPane().remove(pdfComponent.getAWTComponent());
+			this.zoomer.setContainedComponent(null);
+			this.pdfWorld = null;
 		}
 		
-		if (pdfFile != null && pdfFile.getNumberOfPages() > 0)
+		if (pdf != null && pdf.getNumberOfPages() > 0)
 		{
-			setCurrentPage(pdfFile.getPages().get(0));
-			pdfComponent.setOverlay(this::paintPDFOverlay);
-			pdfComponent.setTransformFilter(this::recalculateTransformIfLocked);
-			this.getContentPane().add(pdfComponent.getAWTComponent());
+			this.pdf = pdf;
+			this.pdfFile = pdfFile;
+			
+			File f = pdfFile.getLocalFileIfApplicable();
+			this.pdfFileLocatorFormatted = f == null ? "<unknown filename>" : f.getName();
+			
+			if (f == null)
+			{
+				this.pdfFileHashFormatted = "<unknown file>";
+			}
+			else
+			{
+				try
+				{
+					this.pdfFileHashFormatted = "MD5:"+DataEncodingUtilities.encodeHexNoDelimiter(CryptographyAndDigestUtilities.performStandardDigest(FSIOUtilities.readAll(f), StandardDigestType.MD5), DataEncodingUtilities.HEX_UPPERCASE);
+				}
+				catch (IOException exc)
+				{
+					exc.printStackTrace();
+					this.pdfFileHashFormatted = "<i/o error>";
+				}
+			}
+			
+			this.pdfWorld = newPDFWorld(pdf);
+			zoomer.setContainedComponent(pdfWorld.getComponent());
 			recalculateStatusBar();
 		}
 		else
 		{
-			pdfComponent = null;
+			this.pdf = null;
+			this.pdfFile = null;
+			this.pdfWorld = null;
 			recalculateStatusBar();
 		}
 	}
 	
 	public boolean hasPDFLoaded()
 	{
-		return pdfComponent.getCurrentPage() != null;
+		return pdfWorld != null;
 	}
 	
-	public BasicPDFFile getCurrentPDFFile()
+	public RendererOnPDF getCurrentPDF()
 	{
-		BasicPDFPage page = pdfComponent.getCurrentPage();
-		return page == null ? null : page.getContainingFile();
-	}
-	
-	public BasicPDFAwtComponentWrapper getPDFComponent()
-	{
-		return pdfComponent;
+		return pdf;
 	}
 	
 	public BasicPDFSystem getPDFSystem()
@@ -306,38 +378,14 @@ extends JFrame
 		return app.getPDFSystem();
 	}
 	
-	public void setCurrentPageByIndex(int pageIndex)
+	public BasicPDFFile getPDFFile()
 	{
-		BasicPDFFile pdfFile = getCurrentPDFFile();
-		
-		if (pdfFile == null)
-			throw new IllegalStateException();
-		
-		setCurrentPage(pdfFile.getPages().get(pageIndex));
-		
-		recalculateStatusBar();
-		repaint();
+		return pdfFile;
 	}
 	
-	public void setCurrentPage(BasicPDFPage page)
+	public void setPDFFile(BasicPDFFile pdfFile)
 	{
-		pdfComponent.setCurrentPage(BasicPDFPageRenderableRasterAdapter.toRasterRendering(page));
-	}
-	
-	public int getCurrentPageIndex()
-	{
-		BasicPDFPage page = pdfComponent.getCurrentPage();
-		if (page == null)
-			throw new IllegalStateException();
-		return page.getPageIndex();
-	}
-	
-	public void switchPageRelative(int numberOfPages)
-	{
-		if (hasPDFLoaded())
-		{
-			setCurrentPageByIndex(SmallIntegerMathUtilities.progmod(getCurrentPageIndex() + numberOfPages, getCurrentPDFFile().getNumberOfPages()));
-		}
+		this.pdfFile = pdfFile;
 	}
 	
 	
@@ -349,6 +397,8 @@ extends JFrame
 	public void openFile(File file)
 	{
 		temporarilySetStatusBarText("Loading "+file.getName()+" ...");
+		
+		
 		
 		BasicPDFFile pdfFile;
 		
@@ -368,61 +418,258 @@ extends JFrame
 		}
 		
 		
-		displayFile(pdfFile);
+		displayPDF(pdfFile);
+		
 		
 		temporarilySetStatusBarText("Done! :D");
 	}
 	
 	
-	public void openFileFromOtherWindowSharingCache(PDFMonkeyWindow other)
+	public void openFileFromOtherWindowSharingCacheAndCopyDisplaySettings(PDFMonkeyWindow other)
 	{
-		displayFile(other.getCurrentPDFFile());
+		displayPDF(other.getCurrentPDF(), other.getPDFFile());
+		
+		if (other.hasPDFLoaded())
+		{
+			asrt(this.hasPDFLoaded());
+			
+			this.pdfWorld.setDisplaySettingsFromOtherOfSameRuntimeTypeOfIgnoreIfImmutable(other.pdfWorld);
+		}
+		else
+		{
+			asrt(!this.hasPDFLoaded());
+		}
+		
+		this.zoomer.setZoomSettingsFromOther(other.zoomer);
 	}
 	
 	
 	
 	
-	protected DecimalFormat mouseCoorsFormat = new DecimalFormat("0.000");
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	public void ourDragCompleted(int x, int y, int w, int h)
+	{
+		if (hasPDFLoaded())
+		{
+			IntRectangle regionInViewerSpace = new IntRectangle(x, y, w, h);
+			
+			if (dragOperation != null)
+			{
+				Rectangle2D regionInCanvasSpace = transformAxisAlignedRectangleOPC(intRectToFloat(regionInViewerSpace), zoomer.getCurrentTransformDisplaySpaceToCanvasSpace());
+				
+				RectangleSinglePageLocationResult<Integer> r = pdfWorld.findRectangleInPageSpace(regionInCanvasSpace);
+				
+				if (r != null)
+				{
+					Rectangle2D regionInPageSpace = r.getRectangleInPageSpace();
+					
+					int pageIndexZerobased = r.getChildIdentifier();
+					
+					dragOperation.run(pageIndexZerobased, regionInPageSpace);
+					
+					this.repaint();
+				}
+			}
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	public List<String> produceInfoRecord(int pageIndexZerobased, @Nullable Rectangle2D regionInPageSpace)
+	{
+		if (regionInPageSpace == null)
+			return listof(pdfFileLocatorFormatted, pdfFileHashFormatted, Integer.toString(pageIndexZerobased + 1));
+		else
+			return listof(pdfFileLocatorFormatted, pdfFileHashFormatted, Integer.toString(pageIndexZerobased + 1), Double.toString(regionInPageSpace.getX()), Double.toString(regionInPageSpace.getY()), Double.toString(regionInPageSpace.getWidth()), Double.toString(regionInPageSpace.getHeight()));
+	}
+	
+	
+	public void extractText(int pageIndexZerobased, Rectangle2D regionInPageSpace)
+	{
+		if (pdfFile != null)
+		{
+			try
+			{
+				BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
+				
+				String result = PDFMonkeyBusiness.extractRegionOfPageAsText(page, regionInPageSpace);
+				
+				String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, regionInPageSpace))));
+				String finalResult = result.trim() + "\n" + infoLine;
+				
+				setClipboardText(finalResult);
+				temporarilySetStatusBarText("Done extracting text!");
+			}
+			catch (Exception exc)
+			{
+				exc.printStackTrace();
+				JOptionPane.showMessageDialog(null, "Error extracting text from region in page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
+			}
+		}
+	}
+	
+	public void extractEntirePageText(int pageIndexZerobased)
+	{
+		try
+		{
+			BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
+			
+			String result = PDFMonkeyBusiness.extractEntirePageAsText(page);
+			
+			String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, null))));
+			String finalResult = result.trim() + "\n" + infoLine;
+			
+			setClipboardText(finalResult);
+			temporarilySetStatusBarText("Done extracting text!");
+		}
+		catch (Exception exc)
+		{
+			exc.printStackTrace();
+			JOptionPane.showMessageDialog(null, "Error extracting text from page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+	
+	
+	public void extractTable(int pageIndexZerobased, Rectangle2D regionInPageSpace)
+	{
+		if (pdfFile != null)
+		{
+			try
+			{
+				BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
+				
+				SimpleTable<String> table = PDFMonkeyBusiness.extractRegionOfPageAsTable(page, regionInPageSpace);
+				
+				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace);
+				
+				insertRowExpandingIP(table, infoLine, "");
+				
+				setClipboardText(RCSV.serializeRCSV(table));
+				temporarilySetStatusBarText("Done extracting table!");
+			}
+			catch (Exception exc)
+			{
+				exc.printStackTrace();
+				JOptionPane.showMessageDialog(null, "Error extracting table from region in page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
+			}
+		}
+	}
+	
+	public void extractEntirePageTable(int pageIndexZerobased)
+	{
+		try
+		{
+			BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
+			
+			SimpleTable<String> table = PDFMonkeyBusiness.extractEntirePageAsTable(page);
+			
+			List<String> infoLine = produceInfoRecord(pageIndexZerobased, null);
+			
+			insertRowExpandingIP(table, infoLine, "");
+			
+			setClipboardText(RCSV.serializeRCSV(table));
+			temporarilySetStatusBarText("Done extracting table!");
+		}
+		catch (Exception exc)
+		{
+			exc.printStackTrace();
+			JOptionPane.showMessageDialog(null, "Error extracting table from page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	//protected DecimalFormat mouseCoorsFormat = new DecimalFormat("0.000");  //someday we'll have fractional coordinates again XD''
+	protected DecimalFormat mouseCoorsFormat = new DecimalFormat("0");
 	
 	protected void recalculateStatusBar()
 	{
 		if (!statusBarInTemporaryTextMode)
 		{
-			String t;
+			String t = "";
 			
-			BasicPDFPage page = pdfComponent.getCurrentPage();
-			
-			if (page != null)
+			if (hasPDFLoaded())
 			{
-				int i = page.getPageIndex();
-				t = "Page "+(i+1)+ " ("+i+"z)  /  " + page.getContainingFile().getNumberOfPages();
-			}
-			else
-			{
-				t = "No file loaded!";
-			}
-			
-			t += "     ["+(isExtractTableMode() ? "<drag to extract table!!>  " : (isExtractTextMode() ? "<drag to extract text!!>  " : ""))+(getWheelMode() == WheelMode.Zoom ? "w=z" : (getWheelMode() == WheelMode.Y ? "w=y" : "w=x"))+(lockMode ? "" : " unlocked")+"]";
-			
-			
-			if (showMouseCoordinatesInPageSpace)
-			{
-				//Show mouse coordinates! :D
-				if (hasPDFLoaded())
+				boolean gotit = false;
+				
+				if (showMouseCoordinatesInPageSpace)
 				{
-					IntPoint p = mouseTracker.getCurrentCursorPosition();
-					Point2D currentMousePointInDisplaySpace = p == null ? null : intPointToFloat(p);
+					//Show mouse coordinates! :D
 					
-					if (currentMousePointInDisplaySpace != null)
+					IntPoint p = getCurrentMousePositionInPDFWorldSpace();
+					
+					if (p != null)
 					{
-						Point2D currentMousePointInPageSpace = pdfComponent.transformPointFromDisplaySpaceToPageSpace(currentMousePointInDisplaySpace);
-						t += "   ("+mouseCoorsFormat.format(currentMousePointInPageSpace.getX())+", "+mouseCoorsFormat.format(currentMousePointInPageSpace.getY())+")";
+						PointLocationResult<Integer> pp = pdfWorld.findPointInPageSpace(p.getX(), p.getY());
+						
+						if (pp != null)
+						{
+							int i = pp.getChildIdentifier();
+							t = "Page "+(i+1)+ " / " + pdf.getNumberOfPages();
+							
+							t += "   ("+mouseCoorsFormat.format(pp.getPointInPageSpaceX())+", "+mouseCoorsFormat.format(pp.getPointInPageSpaceY())+")";
+							
+							gotit = true;
+						}
+					}
+				}
+				
+				if (!gotit)
+				{
+					Integer arbitraryPageIndexZerobased = getCurrentlyViewedPageIndexZerobased();
+					
+					if (arbitraryPageIndexZerobased != null)
+					{
+						int i = arbitraryPageIndexZerobased;
+						t = "Page "+(i+1)+ " / " + pdf.getNumberOfPages();
 					}
 				}
 			}
+			else
+			{
+				t += "No file loaded!";
+			}
+			
+			
+			
+			t += isExtractTableMode() ? "     <drag to extract table!!>" : (isExtractTextMode() ? "     <drag to extract text!!>" : "");
+			t += zoomer.isLockMode() ? "" : "     (unlocked scroll)";
+			
 			
 			
 			pageIndexLabel.setText(t);
+			repaint();
 		}
 	}
 	
@@ -470,75 +717,21 @@ extends JFrame
 	
 	
 	
-	
-	
-	
-	
-	
-	
-	protected TranslationAndUniformScaleTransform2D recalculateTransformIfLocked(TranslationAndUniformScaleTransform2D currentTransform)
+	public @Nullable Integer getCurrentlyViewedPageIndexZerobased()
 	{
-		if (hasPDFLoaded() && lockMode)
-		{
-			Rectangle2D pb = pdfComponent.getCurrentPage().getPageBoundaries();
-			Component ac = pdfComponent.getAWTComponent();
-			
-			//Retranslate to keep in bounds!
-			{
-				Point2D newOriginAkaTranslation = getPossiblyTruncatedCanvasOriginAkaTranslationKeepingInBounds(pb, rect(0, 0, ac.getWidth(), ac.getHeight()), pdfComponent.getCurrentTransformPageSpaceToDisplaySpace(), 0.5, 0.5);
-				return new TranslationAndUniformScaleTransform2D(newOriginAkaTranslation, currentTransform.getScale());
-			}
-		}
-		
-		return currentTransform;
+		return pdfWorld.getArbitraryPageInRectangle(zoomer.transformRectangleFromDisplaySpaceToCanvasSpace(rect(0, 0, zoomer.getWidth(), zoomer.getHeight())));
 	}
 	
-	
-	protected static Point2D getPossiblyTruncatedCanvasOriginAkaTranslationKeepingInBounds(Rectangle2D canvasBoundsInOwnSpace, Rectangle2D viewportBoundsInOwnSpace, AffineTransform transformFromCanvasSpaceToViewportSpace, double xPositioningFactorIfCanvasIsTooSmall, double yPositioningFactorIfCanvasIsTooSmall)
+	public double pageScrollAmountX()
 	{
-		Rectangle2D canvasBoundsInViewportSpace = transformAxisAlignedRectangleOPC(canvasBoundsInOwnSpace, transformFromCanvasSpaceToViewportSpace);
-		
-		double oldMinX = canvasBoundsInViewportSpace.getMinX();
-		double oldMinY = canvasBoundsInViewportSpace.getMinY();
-		
-		double newMinX = oldMinX;
-		double newMinY = oldMinY;
-		
-		if (canvasBoundsInViewportSpace.getWidth() < viewportBoundsInOwnSpace.getWidth())
-		{
-			newMinX = (viewportBoundsInOwnSpace.getWidth() - canvasBoundsInViewportSpace.getWidth()) * xPositioningFactorIfCanvasIsTooSmall;
-		}
-		else
-		{
-			if (canvasBoundsInViewportSpace.getMinX() > viewportBoundsInOwnSpace.getMinX())
-				newMinX = viewportBoundsInOwnSpace.getMinX();
-			else if (canvasBoundsInViewportSpace.getMaxX() < viewportBoundsInOwnSpace.getMaxX())
-				//newMaxX = viewportBoundsInOwnSpace.getMaxX();
-				//maxX - minX = width
-				//-minX = width - maxX
-				//minX = maxX - width
-				newMinX = viewportBoundsInOwnSpace.getMaxX() - canvasBoundsInViewportSpace.getWidth();
-		}
-		
-		
-		if (canvasBoundsInViewportSpace.getHeight() < viewportBoundsInOwnSpace.getHeight())
-		{
-			newMinY = (viewportBoundsInOwnSpace.getHeight() - canvasBoundsInViewportSpace.getHeight()) * yPositioningFactorIfCanvasIsTooSmall;
-		}
-		else
-		{
-			if (canvasBoundsInViewportSpace.getMinY() > viewportBoundsInOwnSpace.getMinY())
-				newMinY = viewportBoundsInOwnSpace.getMinY();
-			else if (canvasBoundsInViewportSpace.getMaxY() < viewportBoundsInOwnSpace.getMaxY())
-				//newMaxY = viewportBoundsInOwnSpace.getMaxY();
-				//maxY - minY = height
-				//-minY = height - maxY
-				//minY = maxY - height
-				newMinY = viewportBoundsInOwnSpace.getMaxY() - canvasBoundsInViewportSpace.getHeight();
-		}
-		
-		
-		return pointOrVector2D(newMinX, newMinY);
+		//Todo softcode ^^'
+		return zoomer.getWidth() * 0.3d;
+	}
+	
+	public double pageScrollAmountY()
+	{
+		//Todo softcode ^^'
+		return zoomer.getHeight() * 0.3d;
 	}
 	
 	
@@ -558,222 +751,337 @@ extends JFrame
 	
 	protected void clearAllInputActionsDueToPDFFileChanging()
 	{
-		cancelDrag();
+		selectionDragger.cancelDrag();
 	}
 	
 	
 	
 	
-	protected double relativeZoomFactor = 1.5;
 	
 	
-	protected SimpleButtonStateTracker keyTracker = new SimpleButtonStateTracker(0x10000,
-	new ButtonInputReceiver()
+	protected SimpleButtonStateTracker keyTracker;
+	
+	
+	protected void initKeyTracker()
 	{
-		@Override
-		public void setButtonState(int keyCode, boolean newState)
+		keyTracker = AwtAndSimpleTrackersUtilities.setupKeySuite(this, new ButtonInputReceiver()
 		{
-			boolean actionModifierDown = isActionModifierDown();
-			
-			
-			if (newState == true)
+			@Override
+			public void setButtonState(int keyCode, boolean newState)
 			{
-				if (keyCode == VK_N && actionModifierDown)
+				boolean actionModifierDown = isActionModifierDown();
+				boolean shiftModifierDown = isShiftModifierDown();
+				
+				
+				if (newState == true)
 				{
-					app.openNewDuplicateWindow(PDFMonkeyWindow.this);
-				}
-				
-				//Navigation within the page ^www^
-				else if (keyCode == VK_EQUALS)
-				{
-					if (hasPDFLoaded())
-						pdfComponent.multiplyScaleButKeepCenterInCoincidence(relativeZoomFactor);
-					cancelDrag();
-				}
-				else if (keyCode == VK_MINUS)
-				{
-					if (hasPDFLoaded())
-						pdfComponent.multiplyScaleButKeepCenterInCoincidence(1/relativeZoomFactor);
-					cancelDrag();
-				}
-				else if (keyCode == VK_A)
-				{
-					if (hasPDFLoaded())
-						pdfComponent.setToFitToPage();
-					cancelDrag();
-				}
-				else if (keyCode == VK_W)
-				{
-					if (hasPDFLoaded())
-						pdfComponent.setToFitToWidthButKeepCenterYsInCoincidence();
-					cancelDrag();
-				}
-				else if (keyCode == VK_H)
-				{
-					if (hasPDFLoaded())
-						pdfComponent.setToFitToHeightButKeepCenterXsInCoincidence();
-					cancelDrag();
-				}
-				
-				
-				else if (keyCode == VK_L)
-				{
-					lockMode = !lockMode;
-					recalculateStatusBar();
-					
-					if (hasPDFLoaded() && lockMode)
-						pdfComponent.rerunTransformFilter();
-					
-					cancelDrag();
-				}
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				//Changing pagesssss!! :DDD
-				else if (keyCode == VK_J)
-				{
-					if (hasPDFLoaded())
+					if (keyCode == VK_ESCAPE)
 					{
-						boolean zeroBased = keyTracker.getButtonState(VK_ALT);
+						selectionDragger.cancelDrag();
+					}
+					
+					
+					else if (keyCode == VK_N && actionModifierDown)
+					{
+						app.openNewDuplicateWindow(PDFMonkeyWindow.this);
+					}
+					
+					//Navigation within the page ^www^
+					else if (keyCode == VK_EQUALS)
+					{
+						if (hasPDFLoaded())
+							zoomer.multiplyScaleButKeepCenterInCoincidence(zoomer.getRelativeZoomFactor());
+						selectionDragger.cancelDrag();
+					}
+					else if (keyCode == VK_MINUS)
+					{
+						if (hasPDFLoaded())
+							zoomer.multiplyScaleButKeepCenterInCoincidence(1/zoomer.getRelativeZoomFactor());
+						selectionDragger.cancelDrag();
+					}
+					else if (keyCode == VK_0)
+					{
+						if (hasPDFLoaded())
+							zoomer.setToNaturalScaleButKeepCenterInCoincidence();
+						selectionDragger.cancelDrag();
+					}
+					else if (keyCode == VK_A)
+					{
+						if (hasPDFLoaded())
+							zoomer.setToFitToCanvas();
+						selectionDragger.cancelDrag();
+					}
+					else if (keyCode == VK_W)
+					{
+						if (hasPDFLoaded())
+							zoomer.setToFitToWidthButKeepCenterYsInCoincidence();
+						selectionDragger.cancelDrag();
+					}
+					else if (keyCode == VK_H)
+					{
+						if (hasPDFLoaded())
+							zoomer.setToFitToHeightButKeepCenterXsInCoincidence();
+						selectionDragger.cancelDrag();
+					}
+					
+					
+					else if (keyCode == VK_L)
+					{
+						zoomer.setLockMode(!zoomer.isLockMode());
+						recalculateStatusBar();
 						
-						Object response = JOptionPane.showInputDialog(null, "Enter the new page "+(zeroBased ? "index" : "number")+"! :D", "Jump to Page", JOptionPane.QUESTION_MESSAGE, null, null, String.valueOf(getCurrentPageIndex() + (zeroBased ? 0 : 1)));
-						
-						if (response != null)  //null = cancelled ^wwwww^
+						selectionDragger.cancelDrag();
+					}
+					
+					
+					
+					
+					
+					
+					
+					
+					
+					
+					//Changing pagesssss!! :DDD
+					else if (keyCode == VK_J)
+					{
+						if (hasPDFLoaded())
 						{
-							String a = (String) response;
+							boolean zeroBased = keyTracker.getButtonState(VK_ALT);
 							
-							boolean valid = false;
-							int newPageIndex = 0;
-							{
-								try
-								{
-									newPageIndex = Integer.parseInt(a);
-									valid = true;
-								}
-								catch (NumberFormatException exc)
-								{
-								}
-							}
+							int i = getCurrentlyViewedPageIndexZerobased();
 							
-							if (valid)
+							Object response = JOptionPane.showInputDialog(null, "Enter the new page "+(zeroBased ? "index" : "number")+"! :D", "Jump to Page", JOptionPane.QUESTION_MESSAGE, null, null, String.valueOf(i + (zeroBased ? 0 : 1)));
+							
+							if (response != null)  //null = cancelled ^wwwww^
 							{
-								if (!zeroBased)
-									newPageIndex--;
+								String a = (String) response;
 								
-								newPageIndex = SmallIntegerMathUtilities.progmod(newPageIndex, getCurrentPDFFile().getNumberOfPages());
-								setCurrentPageByIndex(newPageIndex);
+								boolean valid = false;
+								int newPageIndex = 0;
+								{
+									try
+									{
+										newPageIndex = Integer.parseInt(a);
+										valid = true;
+									}
+									catch (NumberFormatException exc)
+									{
+									}
+								}
+								
+								if (valid)
+								{
+									if (!zeroBased)
+										newPageIndex--;
+									
+									newPageIndex = SmallIntegerMathUtilities.progmod(newPageIndex, getCurrentPDF().getNumberOfPages());
+									
+									pdfWorld.gotoPage(newPageIndex, zoomer);
+									
+									recalculateStatusBar();
+								}
+							}
+						}
+					}
+					
+					else if (keyCode == VK_HOME)
+					{
+						zoomer.setCurrentCanvasTranslationAndScale(zoomer.getCurrentCanvasTranslationX(), 0, zoomer.getCurrentScale());
+						recalculateStatusBar();
+						repaint();
+					}
+					else if (keyCode == VK_END)
+					{
+						zoomer.translateToPutIntoCoincidence(pointOrVector2D(0, zoomer.getCanvasHeight()), pointOrVector2D(0, zoomer.getHeight()));
+						recalculateStatusBar();
+						repaint();
+					}
+					
+					
+					
+					
+					
+					
+					//THE ACTUAL MONKEY BUSINESS!!! XDDD
+					else if (keyCode == VK_P)
+					{
+						if (hasPDFLoaded())
+						{
+							setClipboardText(Integer.toString(getCurrentlyViewedPageIndexZerobased()+1));
+						}
+					}
+					else if (keyCode == VK_F)
+					{
+						if (hasPDFLoaded())
+						{
+							if (pdfFile != null)
+							{
+								File file = pdfFile.getLocalFileIfApplicable();
+								
+								if (file != null)
+								{
+									setClipboardText(normpath(file.getAbsoluteFile()).getPath());
+								}
+								else
+								{
+									setClipboardText("<unknown path!!>");
+								}
+							}
+							else
+							{
+								setClipboardText("<unknown backing!!>");
+							}
+						}
+					}
+					
+					else if (keyCode == VK_X && actionModifierDown)
+					{
+						if (hasPDFLoaded())
+						{
+							Integer pageIndexZerobased = getCurrentlyViewedPageIndexZerobased();
+							
+							if (pageIndexZerobased != null)
+							{
+								extractEntirePageText(pageIndexZerobased);
+							}
+						}
+					}
+					else if (keyCode == VK_T && actionModifierDown)
+					{
+						if (hasPDFLoaded())
+						{
+							Integer pageIndexZerobased = getCurrentlyViewedPageIndexZerobased();
+							
+							if (pageIndexZerobased != null)
+							{
+								extractEntirePageTable(pageIndexZerobased);
 							}
 						}
 					}
 				}
-				else if (keyCode == VK_OPEN_BRACKET || keyCode == VK_PAGE_UP)
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				//Both key state transitions (true and false) bc why not? X3
+				if (keyCode == VK_CONTROL || keyCode == VK_META || keyCode == VK_SHIFT || keyCode == VK_ALT || keyCode == VK_T || keyCode == VK_X)
 				{
-					switchPageRelative(-1);
-				}
-				else if (keyCode == VK_CLOSE_BRACKET || keyCode == VK_PAGE_DOWN)
-				{
-					switchPageRelative(+1);
-				}
-				
-				
-				
-				
-				
-				
-				//THE ACTUAL MONKEY BUSINESS!!! XDDD
-				else if (keyCode == VK_P)
-				{
-					if (hasPDFLoaded())
-					{
-						setClipboardText(Integer.toString(getCurrentPageIndex()+1));
-					}
-				}
-				else if (keyCode == VK_F)
-				{
-					if (hasPDFLoaded())
-					{
-						File currentFile = getCurrentPDFFile().getLocalFileIfApplicable();
-						
-						if (currentFile != null)
-						{
-							setClipboardText(normpath(currentFile.getAbsoluteFile()).getPath());
-						}
-						else
-						{
-							setClipboardText("<unknown path!!>");
-						}
-					}
+					recalculateStatusBar();
 				}
 				
-				else if (keyCode == VK_X && actionModifierDown)
+				
+				
+				if (keyCode == VK_X || keyCode == VK_C)
 				{
-					if (hasPDFLoaded())
-					{
-						try
-						{
-							setClipboardText(PDFMonkeyBusiness.extractEntirePageAsText(pdfComponent.getCurrentPage()));
-							temporarilySetStatusBarText("Done!");
-						}
-						catch (Exception exc)
-						{
-							JOptionPane.showMessageDialog(null, "Error extracting text from page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
-						}
-					}
+					selectionDragger.cancelDrag();
 				}
-				else if (keyCode == VK_T && actionModifierDown)
-				{
-					if (hasPDFLoaded())
-					{
-						try
-						{
-							setClipboardText(RCSV.serializeRCSV(PDFMonkeyBusiness.extractEntirePageAsTable(pdfComponent.getCurrentPage())));
-							temporarilySetStatusBarText("Done!");
-						}
-						catch (Exception exc)
-						{
-							JOptionPane.showMessageDialog(null, "Error extracting table from page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
-						}
-					}
-				}
-			}
-			
-			
-			
-			//Both key state transitions bc why not? X3
-			if (keyCode == VK_CONTROL || keyCode == VK_META || keyCode == VK_SHIFT || keyCode == VK_ALT || keyCode == VK_T || keyCode == VK_X)
-			{
+				
+				
+				
+				boolean extractDragMode = isExtractTableMode() || isExtractTextMode();
+				
+				zoomer.setWheelMode(actionModifierDown ? WheelMode.Zoom : (shiftModifierDown ? WheelMode.X : WheelMode.Y));
+				zoomer.setDraggingEnabled(!extractDragMode);
+				
+				dragOperation = isExtractTextMode() ? extractTextOperation : (isExtractTableMode() ? extractTableOperation : null);
+				selectionDragger.setDragBoxColor(isExtractTextMode() ? dragBoxColorExtractText : (isExtractTableMode() ? dragBoxColorExtractTable : null));
+				selectionDragger.setDraggingEnabled(extractDragMode);
+				
+				
+				
+				buttonRepeatForGotoPageUp.setKeyCombinationDown(keyTracker.getButtonState(VK_OPEN_BRACKET) || (keyTracker.getButtonState(VK_PAGE_UP) && actionModifierDown));
+				buttonRepeatForGotoPageDown.setKeyCombinationDown(keyTracker.getButtonState(VK_CLOSE_BRACKET) || (keyTracker.getButtonState(VK_PAGE_DOWN) && actionModifierDown));
+				buttonRepeatForPageUpX.setKeyCombinationDown(keyTracker.getButtonState(VK_PAGE_UP) && shiftModifierDown && !actionModifierDown);
+				buttonRepeatForPageDownX.setKeyCombinationDown(keyTracker.getButtonState(VK_PAGE_DOWN) && shiftModifierDown && !actionModifierDown);
+				buttonRepeatForPageUpY.setKeyCombinationDown(keyTracker.getButtonState(VK_PAGE_UP) && !shiftModifierDown && !actionModifierDown);
+				buttonRepeatForPageDownY.setKeyCombinationDown(keyTracker.getButtonState(VK_PAGE_DOWN) && !shiftModifierDown && !actionModifierDown);
+				
+				
+				
+				
+				//Probably unnecessary but why not? X3
 				recalculateStatusBar();
 			}
-			
-			
-			
-			if (inDrag == DragType.OperationRegionExtractText && !isExtractTextMode())
-				cancelDrag();
-			else if (inDrag == DragType.OperationRegionExtractTable && !isExtractTableMode())
-				cancelDrag();
-		}
+		});
+	}
+	
+	
+	
+	protected RepeatableKeyCombinationAndAction buttonRepeatForGotoPageUp = buttonRepeater.newCombinationAwtEventQueue(() ->
+	{
+		gotoPageRelative(-1);
+	});
+	
+	protected RepeatableKeyCombinationAndAction buttonRepeatForGotoPageDown = buttonRepeater.newCombinationAwtEventQueue(() ->
+	{
+		gotoPageRelative(1);
+	});
+	
+	protected RepeatableKeyCombinationAndAction buttonRepeatForPageUpX = buttonRepeater.newCombinationAwtEventQueue(() ->
+	{
+		xPageScrollRelative(-1);
+	});
+	
+	protected RepeatableKeyCombinationAndAction buttonRepeatForPageDownX = buttonRepeater.newCombinationAwtEventQueue(() ->
+	{
+		xPageScrollRelative(1);
+	});
+	
+	protected RepeatableKeyCombinationAndAction buttonRepeatForPageUpY = buttonRepeater.newCombinationAwtEventQueue(() ->
+	{
+		yPageScrollRelative(-1);
+	});
+	
+	protected RepeatableKeyCombinationAndAction buttonRepeatForPageDownY = buttonRepeater.newCombinationAwtEventQueue(() ->
+	{
+		yPageScrollRelative(1);
 	});
 	
 	
 	
-	public static enum WheelMode
+	
+	protected void gotoPageRelative(int r)
 	{
-		X,
-		Y,
-		Zoom,
+		if (hasPDFLoaded())
+		{
+			pdfWorld.gotoPage(getCurrentlyViewedPageIndexZerobased() + r, zoomer);
+			recalculateStatusBar();
+			repaint();
+		}
 	}
 	
-	public @Nonnull WheelMode getWheelMode()
+	protected void xPageScrollRelative(int signum)
 	{
-		return isActionModifierDown() ? WheelMode.Zoom : (isShiftModifierDown() ? WheelMode.X : WheelMode.Y);
+		if (hasPDFLoaded())
+		{
+			zoomer.setCurrentCanvasTranslationAndScale(zoomer.getCurrentCanvasTranslationX() + -signum*pageScrollAmountX(), zoomer.getCurrentCanvasTranslationY(), zoomer.getCurrentScale());
+			recalculateStatusBar();
+			repaint();
+		}
 	}
+	
+	protected void yPageScrollRelative(int signum)
+	{
+		if (hasPDFLoaded())
+		{
+			zoomer.setCurrentCanvasTranslationAndScale(zoomer.getCurrentCanvasTranslationX(), zoomer.getCurrentCanvasTranslationY() + -signum*pageScrollAmountY(), zoomer.getCurrentScale());
+			recalculateStatusBar();
+			repaint();
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
 	
 	protected boolean isExtractTextMode()
 	{
@@ -804,344 +1112,18 @@ extends JFrame
 	
 	
 	
-	protected static enum DragType
-	{
-		Translation,
-		OperationRegionExtractText,
-		OperationRegionExtractTable,
-	}
-	
-	protected DragType inDrag = null;        //..XDDD YUS
-	protected IntPoint dragStart;
-	protected Point2D contentTranslationAtDragStart;
-	
-	protected void startDrag(IntPoint pointInContentSpace)
-	{
-		if (hasPDFLoaded())
-		{
-			dragStart = SmallIntegerBasicGeometry2D.ipoint(pointInContentSpace.x, pointInContentSpace.y);
-			
-			if (isExtractTableMode())
-			{
-				inDrag = DragType.OperationRegionExtractTable;
-			}
-			else if (isExtractTextMode())
-			{
-				inDrag = DragType.OperationRegionExtractText;
-			}
-			else
-			{
-				inDrag = DragType.Translation;
-				contentTranslationAtDragStart = pdfComponent.getCurrentPageTranslation();
-			}
-		}
-	}
-	
-	protected void updateDrag(IntPoint pointInContentSpace)
-	{
-		if (hasPDFLoaded())
-		{
-			if (inDrag == DragType.Translation)
-			{
-				//newContentTranslation = pointNow - pointAtDragStart + originalValue;
-				Point2D newContentTranslation = addVector(intPointToFloat(SmallIntegerBasicGeometry2D.subtractPoints(pointInContentSpace, dragStart)), contentTranslationAtDragStart);
-				pdfComponent.setCurrentPageTranslation(newContentTranslation);
-			}
-			else
-			{
-				pdfComponent.getAWTComponent().repaint();
-			}
-		}
-		else
-		{
-			cancelDrag();
-		}
-	}
-	
-	protected void releaseDragSuccessfully()
-	{
-		if (inDrag != null)
-		{
-			//Perform the drag operationnnnnnnnn!! \:DD/
-			{
-				if (hasPDFLoaded())
-				{
-					IntPoint now = mouseTracker.getCurrentCursorPosition();
-					
-					if (now != null)
-					{
-						if (inDrag == DragType.OperationRegionExtractText)
-						{
-							IntRectangle regionInDisplaySpace = SmallIntegerBasicGeometry2D.irectTwoPoints(dragStart, now);
-							Rectangle2D regionInPageSpace = transformAxisAlignedRectangleOPC(intRectToFloat(regionInDisplaySpace), pdfComponent.getCurrentTransformDisplaySpaceToPageSpace());
-							
-							try
-							{
-								setClipboardText(PDFMonkeyBusiness.extractRegionOfPageAsText(pdfComponent.getCurrentPage(), regionInPageSpace));
-								temporarilySetStatusBarText("Done extracting text!");
-							}
-							catch (Exception exc)
-							{
-								JOptionPane.showMessageDialog(null, "Error extracting text from region in page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
-							}
-						}
-						else if (inDrag == DragType.OperationRegionExtractTable)
-						{
-							IntRectangle regionInDisplaySpace = SmallIntegerBasicGeometry2D.irectTwoPoints(dragStart, now);
-							Rectangle2D regionInPageSpace = transformAxisAlignedRectangleOPC(intRectToFloat(regionInDisplaySpace), pdfComponent.getCurrentTransformDisplaySpaceToPageSpace());
-							
-							try
-							{
-								setClipboardText(RCSV.serializeRCSV(PDFMonkeyBusiness.extractRegionOfPageAsTable(pdfComponent.getCurrentPage(), regionInPageSpace)));
-								temporarilySetStatusBarText("Done extracting table!");
-							}
-							catch (Exception exc)
-							{
-								JOptionPane.showMessageDialog(null, "Error extracting table from region in page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
-							}
-						}
-					}
-				}
-			}
-			
-			inDrag = null;
-			dragStart = null;
-			contentTranslationAtDragStart = null;
-			
-			if (hasPDFLoaded())
-				pdfComponent.getAWTComponent().repaint();
-		}
-	}
-	
-	protected void cancelDrag()
-	{
-		if (inDrag != null)
-		{
-			inDrag = null;
-			dragStart = null;
-			contentTranslationAtDragStart = null;
-			
-			if (hasPDFLoaded())
-				pdfComponent.getAWTComponent().repaint();
-		}
-	}
-	
-	
-	
-	protected SimpleButtonStateTracker mouseButtonTracker = new SimpleButtonStateTracker(3,
-	new ButtonInputReceiver()
-	{
-		@Override
-		public void setButtonState(int buttonIndex, boolean newState)
-		{
-			if (buttonIndex == 0 && mouseTracker.hasCursor())
-			{
-				if (newState)
-				{
-					startDrag(mouseTracker.getCurrentCursorPosition());
-				}
-				else
-				{
-					releaseDragSuccessfully();
-				}
-			}
-		}
-	});
-	
-	
-	protected SimpleAbsoluteCursorPositionTracker mouseTracker = new SimpleAbsoluteCursorPositionTracker(new AbsolutePointingMotionInputReceiver()
-	{
-		@Override
-		public void pointingLost()
-		{
-			cancelDrag();
-		}
-		
-		@Override
-		public void pointingAbsoluteMotion(int newX, int newY)
-		{
-			if (inDrag != null)
-			{
-				updateDrag(SmallIntegerBasicGeometry2D.ipoint(newX, newY));
-			}
-			
-			if (showMouseCoordinatesInPageSpace)
-				recalculateStatusBar();
-		}
-	});
-	
-	protected void realWheelDeal(double wheelRotationAmount)   //^wwwwwwwwwwwwwww^
-	{
-		if (mouseTracker.hasCursor())
-		{
-			if (hasPDFLoaded())
-			{
-				wheelRotationAmount = -wheelRotationAmount;
-				
-				WheelMode wheelMode = getWheelMode();
-				
-				if (wheelMode == WheelMode.Zoom)
-					pdfComponent.setScaleButKeepPointInDisplaySpaceCoincident(pdfComponent.getCurrentScale() * Math.pow(relativeZoomFactor, wheelRotationAmount), intPointToFloat(mouseTracker.getCurrentCursorPosition()));
-				else if (wheelMode == WheelMode.X)
-					pdfComponent.setCurrentPageTranslationX(pdfComponent.getCurrentPageTranslation().getX() + wheelRotationAmount * wheelScrollModeFactor);
-				else if (wheelMode == WheelMode.Y)
-					pdfComponent.setCurrentPageTranslationY(pdfComponent.getCurrentPageTranslation().getY() + wheelRotationAmount * wheelScrollModeFactor);
-				else
-					throw newUnexpectedHardcodedEnumValueExceptionOrNullPointerException(wheelMode);
-			}
-		}
-	}
-	
-	
-	
-	
 	
 	
 	public void handleFilesDropped(Set<File> files)
 	{
-		if (!files.isEmpty())
+		if (files.size() == 1 && !this.hasPDFLoaded())
 		{
-			//For now, just pick one at random ^^'
-			
-			openFile(getArbitraryElementThrowing(files));
-		}
-	}
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	//Input conversionnnnnnnnnn!! :DD
-	
-	@Override
-	protected void processKeyEvent(KeyEvent e)
-	{
-		if (e.getID() == KeyEvent.KEY_PRESSED || e.getID() == KeyEvent.KEY_RELEASED)
-		{
-			keyTracker.setButtonState(e.getKeyCode(), e.getID() == KeyEvent.KEY_PRESSED);
-			e.consume();
-		}
-		
-		super.processKeyEvent(e);
-	}
-	
-	@Override
-	protected void processFocusEvent(FocusEvent e)
-	{
-		if (e.getID() == FocusEvent.FOCUS_LOST && e.getComponent() == this)
-		{
-			keyTracker.setAllButtonsToReleased();
-			lostMouse();
-		}
-		
-		super.processFocusEvent(e);
-	}
-	
-	protected void lostMouse()
-	{
-		mouseButtonTracker.setAllButtonsToReleased();
-		mouseTracker.pointingLost();
-	}
-	
-	
-	protected void ourProcessMouseyEvent(MouseEvent e)
-	{
-		if (e.getID() == MouseEvent.MOUSE_EXITED)
-		{
-			if (mouseButtonTracker.getStates().isEmpty())
-				lostMouse();
+			this.openFile(getSingleElement(files));
 		}
 		else
 		{
-			IntPoint pointInWindowSpace = new IntPoint(e.getX(), e.getY());
-			
-			IntPoint pointInContentSpace = translatePointFromWindowSpaceIntoContentSpace(pointInWindowSpace);
-			
-			if (pointInContentSpace != null)
-			{
-				mouseTracker.pointingAbsoluteMotion(pointInContentSpace.x, pointInContentSpace.y);
-				
-				if (e.getID() == MouseEvent.MOUSE_PRESSED || e.getID() == MouseEvent.MOUSE_RELEASED)
-				{
-					mouseButtonTracker.setButtonState(e.getButton() - 1, e.getID() == MouseEvent.MOUSE_PRESSED);
-				}
-			}
-			else
-			{
-				lostMouse();
-			}
+			for (File f : files)
+				app.openNewWindow(f);
 		}
-		
-		e.consume();
-	}
-	
-	@Override
-	protected void processMouseEvent(MouseEvent e)
-	{
-		ourProcessMouseyEvent(e);
-		super.processMouseEvent(e);
-	}
-	
-	@Override
-	protected void processMouseMotionEvent(MouseEvent e)
-	{
-		ourProcessMouseyEvent(e);
-		super.processMouseMotionEvent(e);
-	}
-	
-	@Override
-	protected void processMouseWheelEvent(MouseWheelEvent e)
-	{
-		IntPoint pointInWindowSpace = new IntPoint(e.getX(), e.getY());
-		
-		IntPoint pointInContentSpace = translatePointFromWindowSpaceIntoContentSpace(pointInWindowSpace);
-		
-		if (pointInContentSpace != null)
-		{
-			mouseTracker.pointingAbsoluteMotion(pointInContentSpace.x, pointInContentSpace.y);
-			realWheelDeal(e.getWheelRotation());
-		}
-		else
-		{
-			lostMouse();
-		}
-		
-		e.consume();
-		
-		
-		super.processMouseWheelEvent(e);
-	}
-	
-	
-	
-	
-	@Nullable
-	protected IntPoint translatePointFromWindowSpaceIntoContentSpace(@Nonnull IntPoint pointInWindowSpace)
-	{
-		Insets insets = this.getInsets();
-		//int contentWidth = this.getWidth() - (insets.left + insets.right);
-		//int contentHeight = this.getHeight() - (insets.top + insets.bottom);
-		
-		IntPoint pointInContentSpace = SmallIntegerBasicGeometry2D.ipoint(pointInWindowSpace.x - insets.left, pointInWindowSpace.y - insets.top);
-		//return pointInContentSpace.x < 0 || pointInContentSpace.x >= contentWidth || pointInContentSpace.y < 0 || pointInContentSpace.y >= contentHeight ? null : pointInContentSpace;
-		return pointInContentSpace;
 	}
 }
