@@ -22,17 +22,17 @@ import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExcep
 public class PDFPlumberPuppeteer
 implements Closeable
 {
-	protected final @Nonnull Reader fromPuppeteer;
-	protected final @Nonnull Writer toPuppeteer;
+	protected final @Nonnull Reader fromPuppet;
+	protected final @Nonnull Writer toPuppet;
 	protected final @Nullable RunnableThrowingIOException cleanlyWaitFor;
 	protected final @Nullable RunnableThrowingIOException forciblyCleanup;
 	
-	public PDFPlumberPuppeteer(InputStream fromPuppeteer, OutputStream toPuppeteer, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
+	public PDFPlumberPuppeteer(InputStream fromPuppet, OutputStream toPuppet, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
 	{
-		requireNonNull(fromPuppeteer);
-		requireNonNull(toPuppeteer);
-		this.fromPuppeteer = new InputStreamReader(fromPuppeteer, StandardCharsets.UTF_8);
-		this.toPuppeteer = new OutputStreamWriter(toPuppeteer, StandardCharsets.UTF_8);
+		requireNonNull(fromPuppet);
+		requireNonNull(toPuppet);
+		this.fromPuppet = new InputStreamReader(fromPuppet, StandardCharsets.UTF_8);
+		this.toPuppet = new OutputStreamWriter(toPuppet, StandardCharsets.UTF_8);
 		this.cleanlyWaitFor = cleanlyWaitFor;
 		this.forciblyCleanup = forciblyCleanup;
 	}
@@ -64,14 +64,14 @@ implements Closeable
 			try
 			{
 				if (!cleanShuttingDown)
-					fromPuppeteer.close();
+					fromPuppet.close();
 			}
 			finally
 			{
 				try
 				{
 					if (!cleanShuttingDown)
-						toPuppeteer.close();
+						toPuppet.close();
 				}
 				finally
 				{
@@ -102,8 +102,8 @@ implements Closeable
 										{
 											synchronized (this)
 											{
-												fromPuppeteer.close();
-												fromPuppeteer = null;
+												fromPuppet.close();
+												fromPuppet = null;
 											}
 										}
 									}
@@ -113,8 +113,8 @@ implements Closeable
 										{
 											synchronized (this)
 											{
-												toPuppeteer.close();
-												toPuppeteer = null;
+												toPuppet.close();
+												toPuppet = null;
 											}
 										}
 									}
@@ -140,8 +140,8 @@ implements Closeable
 						{
 							synchronized (this)
 							{
-								toPuppeteer.close();
-								toPuppeteer = null;
+								toPuppet.close();
+								toPuppet = null;
 							}
 						}
 						finally
@@ -150,8 +150,8 @@ implements Closeable
 							{
 								synchronized (this)
 								{
-									fromPuppeteer.close();
-									fromPuppeteer = null;
+									fromPuppet.close();
+									fromPuppet = null;
 								}
 							}
 							finally
