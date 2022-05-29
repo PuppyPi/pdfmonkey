@@ -19,7 +19,7 @@ import javax.annotation.Nullable;
 import rebound.osint.OSUtilities;
 import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExceptionsStandard.RunnableThrowingIOException;
 
-public class PDFPlumberPuppeteerEmissary
+public class PDFPlumberPuppeteer
 implements Closeable
 {
 	protected final @Nonnull Reader fromPuppeteer;
@@ -27,7 +27,7 @@ implements Closeable
 	protected final @Nullable RunnableThrowingIOException cleanlyWaitFor;
 	protected final @Nullable RunnableThrowingIOException forciblyCleanup;
 	
-	public PDFPlumberPuppeteerEmissary(InputStream fromPuppeteer, OutputStream toPuppeteer, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
+	public PDFPlumberPuppeteer(InputStream fromPuppeteer, OutputStream toPuppeteer, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
 	{
 		requireNonNull(fromPuppeteer);
 		requireNonNull(toPuppeteer);
@@ -169,7 +169,7 @@ implements Closeable
 	}
 	
 	
-	public static PDFPlumberPuppeteerEmissary openLocal(String python3Interpreter, File pdfplumberpuppeteerFile, @Nullable String pythonpath) throws IOException
+	public static PDFPlumberPuppeteer openLocal(String python3Interpreter, File pdfplumberpuppeteerFile, @Nullable String pythonpath) throws IOException
 	{
 		ProcessBuilder b = new ProcessBuilder(listof(python3Interpreter, pdfplumberpuppeteerFile.getAbsolutePath()));
 		
@@ -183,7 +183,7 @@ implements Closeable
 		RunnableThrowingIOException cleanlyWaitFor = OSUtilities.processWaiter(p);
 		RunnableThrowingIOException forciblyCleanup = () -> {if (p.isAlive()) p.destroyForcibly();};
 		
-		return new PDFPlumberPuppeteerEmissary(fromPuppeteer, toPuppeteer, cleanlyWaitFor, forciblyCleanup);
+		return new PDFPlumberPuppeteer(fromPuppeteer, toPuppeteer, cleanlyWaitFor, forciblyCleanup);
 	}
 	
 	
