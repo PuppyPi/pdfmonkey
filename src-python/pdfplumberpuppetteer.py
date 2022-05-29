@@ -77,6 +77,7 @@ def main():
 		
 		
 		sys.stdout.write(json.dumps(out).replace('\n', '').replace('\r', ''))
+		sys.stdout.write('\n')
 		
 		if (quit):
 			break
