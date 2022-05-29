@@ -1,4 +1,4 @@
-import sys, json, pdfplumber
+import sys, io, json, pdfplumber
 
 # https://github.com/jsvine/pdfplumber
 
@@ -6,8 +6,13 @@ def main():
 	currentFile = None
 	currentTables = None
 	
+	# Force encoding to UTF-8 for reliability
+	#  https://stackoverflow.com/a/16549381
+	stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+	stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+	
 	while True:
-		line = sys.stdin.readline()
+		line = stdin.readline()
 		gds = json.loads(line)
 		
 		out = None
@@ -78,8 +83,9 @@ def main():
 		
 		
 		
-		sys.stdout.write(json.dumps(out).replace('\n', '').replace('\r', ''))
-		sys.stdout.write('\n')
+		stdout.write(json.dumps(out).replace('\n', '').replace('\r', ''))
+		stdout.write('\n')
+		stdout.flush()
 		
 		if (quit):
 			break

@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import javax.annotation.Nullable;
 import rebound.osint.OSUtilities;
 import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExceptionsStandard.RunnableThrowingIOException;
@@ -20,8 +21,8 @@ implements Closeable
 	
 	public PDFPlumberPuppeteerEmissary(InputStream fromPuppeteer, OutputStream toPuppeteer, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
 	{
-		this.fromPuppeteer = new InputStreamReader(fromPuppeteer);
-		this.toPuppeteer = new OutputStreamWriter(toPuppeteer);
+		this.fromPuppeteer = new InputStreamReader(fromPuppeteer, StandardCharsets.UTF_8);
+		this.toPuppeteer = new OutputStreamWriter(toPuppeteer, StandardCharsets.UTF_8);
 		this.cleanlyWaitFor = cleanlyWaitFor;
 		this.forciblyCleanup = forciblyCleanup;
 	}
