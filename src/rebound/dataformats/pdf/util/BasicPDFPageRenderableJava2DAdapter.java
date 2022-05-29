@@ -1,0 +1,11 @@
+package rebound.dataformats.pdf.util;
+
+import rebound.dataformats.pdf.BasicPDFPageRenderable.BasicPDFPageRenderableJava2D;
+import rebound.dataformats.pdf.BasicPDFPageRenderable.BasicPDFPageRenderableRaster;
+
+public class BasicPDFPageRenderableJava2DAdapter
+extends BasicPDFPageRenderableDecorator<BasicPDFPageRenderableRaster>
+implements BasicPDFPageRenderableJava2D
+{
+	
+}
