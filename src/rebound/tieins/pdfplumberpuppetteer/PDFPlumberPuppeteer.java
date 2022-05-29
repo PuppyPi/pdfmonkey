@@ -13,6 +13,7 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import rebound.io.util.AbstractPuppeteer;
 import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExceptionsStandard.RunnableThrowingIOException;
 
 public class PDFPlumberPuppeteer
