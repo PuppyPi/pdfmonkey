@@ -120,6 +120,10 @@ public class PDFMonkeyBusinessForTabula
 		requireNonNull(page);
 		
 		File file = page.getContainingFile().getLocalFileIfApplicable();
+		
+		if (file == null)
+			throw new UnsupportedOperationException();
+		
 		int pageIndex = page.getPageIndex();
 		
 		TableExtractor tableExtractor = new TableExtractor();
