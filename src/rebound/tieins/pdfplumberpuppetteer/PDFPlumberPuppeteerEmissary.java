@@ -2,6 +2,7 @@ package rebound.tieins.pdfplumberpuppetteer;
 
 import static java.util.Objects.*;
 import static rebound.concurrency.ConcurrencyUtilities.*;
+import static rebound.util.BasicExceptionUtilities.*;
 import static rebound.util.collections.CollectionUtilities.*;
 import java.io.Closeable;
 import java.io.File;
@@ -38,51 +39,134 @@ implements Closeable
 	
 	
 	
+	protected boolean closed = false;
+	
 	@Override
 	public void close() throws IOException
 	{
+		final boolean cleanShuttingDown;
+		
 		try
 		{
-			fromPuppeteer.close();
+			if (!closed)
+			{
+				this.closed = true;
+				sendShutdownCleanlyButDontWait();
+				cleanShuttingDown = true;
+			}
+			else
+			{
+				cleanShuttingDown = false;
+			}
 		}
 		finally
 		{
 			try
 			{
-				toPuppeteer.close();
+				if (!cleanShuttingDown)
+					fromPuppeteer.close();
 			}
 			finally
 			{
-				if (cleanlyWaitFor != null)
+				try
 				{
-					Throwable[] tc = new Throwable[1];
-					
-					Thread waiter = spawnDaemon(() ->
+					if (!cleanShuttingDown)
+						toPuppeteer.close();
+				}
+				finally
+				{
+					try
+					{
+						if (cleanlyWaitFor != null)
+						{
+							Throwable[] tc = new Throwable[1];
+							
+							Thread waiter = spawnDaemon(() ->
+							{
+								try
+								{
+									if (cleanShuttingDown)
+										waitForCleanShutDownResponse();
+									
+									cleanlyWaitFor.run();
+								}
+								catch (Throwable t)
+								{
+									tc[0] = t;
+								}
+								finally
+								{
+									try
+									{
+										if (cleanShuttingDown)
+										{
+											synchronized (this)
+											{
+												fromPuppeteer.close();
+												fromPuppeteer = null;
+											}
+										}
+									}
+									finally
+									{
+										if (cleanShuttingDown)
+										{
+											synchronized (this)
+											{
+												toPuppeteer.close();
+												toPuppeteer = null;
+											}
+										}
+									}
+								}
+							});
+							
+							waiter.start();
+							
+							joinThreadFullyMS(waiter, 10*1000);  //Todo configurable maximum-time-to-wait
+							
+							if (tc[0] != null)
+							{
+								if (tc[0] instanceof IOException)
+									throw (IOException)tc[0];
+								else
+									rethrowSafe(tc[0]);
+							}
+						}
+					}
+					finally
 					{
 						try
 						{
-							cleanlyWaitFor.run();
+							synchronized (this)
+							{
+								toPuppeteer.close();
+								toPuppeteer = null;
+							}
 						}
-						catch (Throwable t)
+						finally
 						{
-							tc[0] = t;
+							try
+							{
+								synchronized (this)
+								{
+									fromPuppeteer.close();
+									fromPuppeteer = null;
+								}
+							}
+							finally
+							{
+								if (forciblyCleanup != null)
+								{
+									forciblyCleanup.run();
+								}
+							}
 						}
-					});
-					
-					waiter.start();
-					
-					joinThreadFullyMS(waiter, 10*1000);  //Todo configurable maximum-time-to-wait
-				}
-				
-				
-				if (forciblyCleanup != null)
-				{
-					forciblyCleanup.run();
+					}
 				}
 			}
 		}
 	}
-	
 	
 	
 	public static PDFPlumberPuppeteerEmissary openLocal(String python3Interpreter, File pdfplumberpuppeteerFile, @Nullable String pythonpath) throws IOException
