@@ -1,5 +1,7 @@
 package rebound.tieins.pdfplumberpuppetteer;
 
+import static java.util.Objects.*;
+import static rebound.concurrency.ConcurrencyUtilities.*;
 import static rebound.util.collections.CollectionUtilities.*;
 import java.io.Closeable;
 import java.io.File;
@@ -11,6 +13,7 @@ import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import rebound.osint.OSUtilities;
 import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExceptionsStandard.RunnableThrowingIOException;
@@ -18,21 +21,23 @@ import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExcep
 public class PDFPlumberPuppeteerEmissary
 implements Closeable
 {
-	protected final Reader fromPuppeteer;
-	protected final Writer toPuppeteer;
-	protected final RunnableThrowingIOException cleanlyWaitFor;
-	protected final RunnableThrowingIOException forciblyCleanup;
+	protected final @Nonnull Reader fromPuppeteer;
+	protected final @Nonnull Writer toPuppeteer;
+	protected final @Nullable RunnableThrowingIOException cleanlyWaitFor;
+	protected final @Nullable RunnableThrowingIOException forciblyCleanup;
 	
 	public PDFPlumberPuppeteerEmissary(InputStream fromPuppeteer, OutputStream toPuppeteer, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
 	{
+		requireNonNull(fromPuppeteer);
+		requireNonNull(toPuppeteer);
 		this.fromPuppeteer = new InputStreamReader(fromPuppeteer, StandardCharsets.UTF_8);
 		this.toPuppeteer = new OutputStreamWriter(toPuppeteer, StandardCharsets.UTF_8);
 		this.cleanlyWaitFor = cleanlyWaitFor;
 		this.forciblyCleanup = forciblyCleanup;
 	}
-
-
-
+	
+	
+	
 	@Override
 	public void close() throws IOException
 	{
@@ -48,7 +53,32 @@ implements Closeable
 			}
 			finally
 			{
-				forciblyCleanup.close();
+				if (cleanlyWaitFor != null)
+				{
+					Throwable[] tc = new Throwable[1];
+					
+					Thread waiter = spawnDaemon(() ->
+					{
+						try
+						{
+							cleanlyWaitFor.run();
+						}
+						catch (Throwable t)
+						{
+							tc[0] = t;
+						}
+					});
+					
+					waiter.start();
+					
+					joinThreadFullyMS(waiter, 10*1000);  //Todo configurable maximum-time-to-wait
+				}
+				
+				
+				if (forciblyCleanup != null)
+				{
+					forciblyCleanup.run();
+				}
 			}
 		}
 	}
@@ -66,8 +96,23 @@ implements Closeable
 		
 		InputStream fromPuppeteer = p.getInputStream();
 		OutputStream toPuppeteer = p.getOutputStream();
-		RunnableThrowingIOException waiter = OSUtilities.processWaiter(p);
+		RunnableThrowingIOException cleanlyWaitFor = OSUtilities.processWaiter(p);
+		RunnableThrowingIOException forciblyCleanup = () -> {if (p.isAlive()) p.destroyForcibly();};
 		
-		return new PDFPlumberPuppeteerEmissary(fromPuppeteer, toPuppeteer, waiter, p::destroyForcibly);
+		return new PDFPlumberPuppeteerEmissary(fromPuppeteer, toPuppeteer, cleanlyWaitFor, forciblyCleanup);
 	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 }
