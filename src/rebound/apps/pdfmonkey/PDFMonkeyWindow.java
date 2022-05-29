@@ -470,7 +470,7 @@ extends JFrame
 			{
 				BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
 				
-				String result = PDFMonkeyBusiness.extractRegionOfPageAsText(page, regionInPageSpace);
+				String result = PDFMonkeyBusinessForTabula.extractRegionOfPageAsText(page, regionInPageSpace);
 				
 				String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, regionInPageSpace))));
 				String finalResult = result.trim() + "\n" + infoLine;
@@ -492,7 +492,7 @@ extends JFrame
 		{
 			BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
 			
-			String result = PDFMonkeyBusiness.extractEntirePageAsText(page);
+			String result = PDFMonkeyBusinessForTabula.extractEntirePageAsText(page);
 			
 			String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, null))));
 			String finalResult = result.trim() + "\n" + infoLine;
@@ -516,7 +516,7 @@ extends JFrame
 			{
 				BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
 				
-				SimpleTable<String> table = PDFMonkeyBusiness.extractRegionOfPageAsTable(page, regionInPageSpace);
+				SimpleTable<String> table = PDFMonkeyBusinessForTabula.extractRegionOfPageAsTable(page, regionInPageSpace);
 				
 				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace);
 				
@@ -539,7 +539,7 @@ extends JFrame
 		{
 			BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
 			
-			SimpleTable<String> table = PDFMonkeyBusiness.extractEntirePageAsTable(page);
+			SimpleTable<String> table = PDFMonkeyBusinessForTabula.extractEntirePageAsTable(page);
 			
 			List<String> infoLine = produceInfoRecord(pageIndexZerobased, null);
 			

@@ -23,7 +23,7 @@ import technology.tabula.app.ExtractionMethod;
 import technology.tabula.app.TableExtractor;
 import technology.tabula.app.Tabula;
 
-public class PDFMonkeyBusiness
+public class PDFMonkeyBusinessForTabula
 {
 	public static SimpleTable<String> extractEntirePageAsTable(BasicPDFPage page) throws Exception
 	{
