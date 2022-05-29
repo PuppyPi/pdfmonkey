@@ -1,5 +1,7 @@
 import sys, json, pdfplumber
 
+# https://github.com/jsvine/pdfplumber
+
 def main():
 	currentFile = None
 	currentTables = None
