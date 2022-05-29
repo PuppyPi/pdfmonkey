@@ -1,8 +1,5 @@
 package rebound.tieins.pdfplumberpuppetteer;
 
-import static java.util.Objects.*;
-import static rebound.concurrency.ConcurrencyUtilities.*;
-import static rebound.util.BasicExceptionUtilities.*;
 import static rebound.util.collections.CollectionUtilities.*;
 import java.io.Closeable;
 import java.io.File;
@@ -16,157 +13,36 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import rebound.osint.OSUtilities;
 import rebound.util.functional.throwing.FunctionalInterfacesThrowingCheckedExceptionsStandard.RunnableThrowingIOException;
 
 public class PDFPlumberPuppeteer
+extends AbstractPuppeteer
 implements Closeable
 {
-	protected final @Nonnull Reader fromPuppet;
-	protected final @Nonnull Writer toPuppet;
-	protected final @Nullable RunnableThrowingIOException cleanlyWaitFor;
-	protected final @Nullable RunnableThrowingIOException forciblyCleanup;
+	protected @Nonnull Reader fromPuppetText;
+	protected @Nonnull Writer toPuppetText;
+	
 	
 	public PDFPlumberPuppeteer(InputStream fromPuppet, OutputStream toPuppet, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
 	{
-		requireNonNull(fromPuppet);
-		requireNonNull(toPuppet);
-		this.fromPuppet = new InputStreamReader(fromPuppet, StandardCharsets.UTF_8);
-		this.toPuppet = new OutputStreamWriter(toPuppet, StandardCharsets.UTF_8);
-		this.cleanlyWaitFor = cleanlyWaitFor;
-		this.forciblyCleanup = forciblyCleanup;
+		super(fromPuppet, toPuppet, cleanlyWaitFor, forciblyCleanup);
 	}
 	
-	
-	
-	protected boolean closed = false;
+	public PDFPlumberPuppeteer(Process p)
+	{
+		super(p);
+	}
 	
 	@Override
-	public void close() throws IOException
+	protected void init(InputStream fromPuppet, OutputStream toPuppet, RunnableThrowingIOException cleanlyWaitFor, RunnableThrowingIOException forciblyCleanup)
 	{
-		final boolean cleanShuttingDown;
+		super.init(fromPuppet, toPuppet, cleanlyWaitFor, forciblyCleanup);
 		
-		try
-		{
-			if (!closed)
-			{
-				this.closed = true;
-				sendShutdownCleanlyButDontWait();
-				cleanShuttingDown = true;
-			}
-			else
-			{
-				cleanShuttingDown = false;
-			}
-		}
-		finally
-		{
-			try
-			{
-				if (!cleanShuttingDown)
-					fromPuppet.close();
-			}
-			finally
-			{
-				try
-				{
-					if (!cleanShuttingDown)
-						toPuppet.close();
-				}
-				finally
-				{
-					try
-					{
-						if (cleanlyWaitFor != null)
-						{
-							Throwable[] tc = new Throwable[1];
-							
-							Thread waiter = spawnDaemon(() ->
-							{
-								try
-								{
-									if (cleanShuttingDown)
-										waitForCleanShutDownResponse();
-									
-									cleanlyWaitFor.run();
-								}
-								catch (Throwable t)
-								{
-									tc[0] = t;
-								}
-								finally
-								{
-									try
-									{
-										if (cleanShuttingDown)
-										{
-											synchronized (this)
-											{
-												fromPuppet.close();
-												fromPuppet = null;
-											}
-										}
-									}
-									finally
-									{
-										if (cleanShuttingDown)
-										{
-											synchronized (this)
-											{
-												toPuppet.close();
-												toPuppet = null;
-											}
-										}
-									}
-								}
-							});
-							
-							waiter.start();
-							
-							joinThreadFullyMS(waiter, 10*1000);  //Todo configurable maximum-time-to-wait
-							
-							if (tc[0] != null)
-							{
-								if (tc[0] instanceof IOException)
-									throw (IOException)tc[0];
-								else
-									rethrowSafe(tc[0]);
-							}
-						}
-					}
-					finally
-					{
-						try
-						{
-							synchronized (this)
-							{
-								toPuppet.close();
-								toPuppet = null;
-							}
-						}
-						finally
-						{
-							try
-							{
-								synchronized (this)
-								{
-									fromPuppet.close();
-									fromPuppet = null;
-								}
-							}
-							finally
-							{
-								if (forciblyCleanup != null)
-								{
-									forciblyCleanup.run();
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		this.fromPuppetText = new InputStreamReader(fromPuppet, StandardCharsets.UTF_8);
+		this.toPuppetText = new OutputStreamWriter(toPuppet, StandardCharsets.UTF_8);
 	}
+	
+	
 	
 	
 	public static PDFPlumberPuppeteer openLocal(String python3Interpreter, File pdfplumberpuppeteerFile, @Nullable String pythonpath) throws IOException
@@ -177,13 +53,7 @@ implements Closeable
 			b.environment().put("PYTHONPATH", pythonpath);
 		
 		Process p = b.start();
-		
-		InputStream fromPuppeteer = p.getInputStream();
-		OutputStream toPuppeteer = p.getOutputStream();
-		RunnableThrowingIOException cleanlyWaitFor = OSUtilities.processWaiter(p);
-		RunnableThrowingIOException forciblyCleanup = () -> {if (p.isAlive()) p.destroyForcibly();};
-		
-		return new PDFPlumberPuppeteer(fromPuppeteer, toPuppeteer, cleanlyWaitFor, forciblyCleanup);
+		return new PDFPlumberPuppeteer(p);
 	}
 	
 	
