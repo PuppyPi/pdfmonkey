@@ -122,22 +122,28 @@ implements Closeable
 	
 	
 	
-	public List<PDFPlumberTableMetadata> findTables(int pageIndex, @Nullable PDFPlumberBoundingBox region) throws IOException
+	/**
+	 * @param includeIntersecting  if region != null, this determines if things intersecting the region given are included (true) or if only things wholly contained within it are (false)
+	 */
+	public List<PDFPlumberTableMetadata> findTables(int pageIndex, @Nullable PDFPlumberBoundingBox region, boolean includeIntersecting) throws IOException
 	{
 		if (region == null)
 			write(listof("find_tables", pageIndex));
 		else
-			write(listof("find_tables", pageIndex, region.getLeft(), region.getTop(), region.getRight(), region.getBottom()));
+			write(listof("find_tables", pageIndex, includeIntersecting ? "crop" : "within_bbox", region.getLeft(), region.getTop(), region.getRight(), region.getBottom()));
 		
 		return mapToList(g -> convertTableMetadata(g), (List)readResponseWhenSuccessIsUnary());
 	}
 	
-	public List<PairOrdered<PDFPlumberTableMetadata, SimpleTable<String>>> findAndExtractTables(int pageIndex, @Nullable PDFPlumberBoundingBox region) throws IOException
+	/**
+	 * @param includeIntersecting  if region != null, this determines if things intersecting the region given are included (true) or if only things wholly contained within it are (false)
+	 */
+	public List<PairOrdered<PDFPlumberTableMetadata, SimpleTable<String>>> findAndExtractTables(int pageIndex, @Nullable PDFPlumberBoundingBox region, boolean includeIntersecting) throws IOException
 	{
 		if (region == null)
 			write(listof("find_tables,extract_tables", pageIndex));
 		else
-			write(listof("find_tables,extract_tables", pageIndex, region.getLeft(), region.getTop(), region.getRight(), region.getBottom()));
+			write(listof("find_tables,extract_tables", pageIndex, includeIntersecting ? "crop" : "within_bbox", region.getLeft(), region.getTop(), region.getRight(), region.getBottom()));
 		
 		List r = readResponseWhenSuccessIsNary(2);
 		List metadataGDSs = (List) r.get(0);
@@ -150,19 +156,22 @@ implements Closeable
 		return mapToList(i -> pair(convertTableMetadata(metadataGDSs.get(i)), convertExtractedTable(extractionGDSs.get(i))), intervalIntegersList(0, n));
 	}
 	
-	public List<SimpleTable<String>> extractTables(int pageIndex, @Nullable PDFPlumberBoundingBox region) throws IOException
+	/**
+	 * @param includeIntersecting  if region != null, this determines if things intersecting the region given are included (true) or if only things wholly contained within it are (false)
+	 */
+	public List<SimpleTable<String>> extractTables(int pageIndex, @Nullable PDFPlumberBoundingBox region, boolean includeIntersecting) throws IOException
 	{
 		if (region == null)
 			write(listof("extract_tables", pageIndex));
 		else
-			write(listof("extract_tables", pageIndex, region.getLeft(), region.getTop(), region.getRight(), region.getBottom()));
+			write(listof("extract_tables", pageIndex, includeIntersecting ? "crop" : "within_bbox", region.getLeft(), region.getTop(), region.getRight(), region.getBottom()));
 		
 		return mapToList(g -> convertExtractedTable(g), (List)readResponseWhenSuccessIsUnary());
 	}
 	
 	
 	/**
-	 * Call after {@link #findTables(int, PDFPlumberBoundingBox)} to operate on its output.
+	 * Call after {@link #findTables(int, PDFPlumberBoundingBox, boolean)} to operate on its output.
 	 */
 	public SimpleTable<String> extractCurrentTable(int tableIndex) throws IOException
 	{
@@ -171,7 +180,7 @@ implements Closeable
 	}
 	
 	/**
-	 * Call after {@link #findTables(int, PDFPlumberBoundingBox)} to operate on its output.
+	 * Call after {@link #findTables(int, PDFPlumberBoundingBox, boolean)} to operate on its output.
 	 */
 	public List<SimpleTable<String>> extractCurrentTables() throws IOException
 	{

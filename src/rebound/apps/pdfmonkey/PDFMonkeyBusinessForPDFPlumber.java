@@ -91,7 +91,7 @@ implements Closeable
 			currentOpenFile = thisFile;
 		}
 		
-		List<PairOrdered<PDFPlumberTableMetadata, SimpleTable<String>>> r = puppeteerConnection.findAndExtractTables(page.getPageIndex(), regionInPageSpace == null ? null : ours2theirsBBox(regionInPageSpace, page));
+		List<PairOrdered<PDFPlumberTableMetadata, SimpleTable<String>>> r = puppeteerConnection.findAndExtractTables(page.getPageIndex(), regionInPageSpace == null ? null : ours2theirsBBox(regionInPageSpace, page), true);  //Todo softcode includeIntersecting  (but 'true' is equivalent to Tabula so we stick with that for compatibility)
 		
 		return mapToList(t -> new TableData(theirs2oursBBox(t.getA().getBoundingBox(), page), mapToList(b -> theirs2oursBBox(b, page), t.getA().getCellBoundingBoxen()), mapTableOP(c -> c == null ? "" : c, t.getB())), r);
 	}
