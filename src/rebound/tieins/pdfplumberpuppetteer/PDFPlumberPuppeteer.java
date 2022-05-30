@@ -274,6 +274,7 @@ implements Closeable
 			throw new ImpossibleException();
 		
 		toPuppetText.write(s);
+		toPuppetText.write('\n');
 		toPuppetText.flush();
 	}
 }
