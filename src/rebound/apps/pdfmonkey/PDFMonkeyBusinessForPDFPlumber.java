@@ -13,6 +13,7 @@ import rebound.annotations.semantic.simpledata.Emptyable;
 import rebound.dataformats.pdf.BasicPDFPage;
 import rebound.tieins.pdfplumberpuppetteer.PDFPlumberBoundingBox;
 import rebound.tieins.pdfplumberpuppetteer.PDFPlumberPuppeteer;
+import rebound.tieins.pdfplumberpuppetteer.PDFPlumberPythonCode;
 import rebound.tieins.pdfplumberpuppetteer.PDFPlumberTableMetadata;
 import rebound.util.collections.PairOrdered;
 import rebound.util.collections.SimpleTable;
@@ -32,10 +33,9 @@ implements Closeable
 	 */
 	public PDFMonkeyBusinessForPDFPlumber() throws UnsupportedOperationException
 	{
-		//TODO softcode
 		String python3Interpreter = "python3";
-		File puppet = new File("/fix/eclipse/workspace/PDFMonkey/src-python/pdfplumberpuppet.py");
-		File libDir = new File("/fix/eclipse/workspace/PDFMonkey/src-python/lib");
+		File puppet = PDFPlumberPythonCode.getPDFPlumberPuppetPythonFile();
+		File libDir = PDFPlumberPythonCode.getPDFPlumberPythonLibrariesFolder();
 		
 		String d = libDir.getAbsolutePath();
 		if (d.indexOf(':') != -1)
