@@ -15,6 +15,18 @@ implements ReComponent, ReComponentHolder
 {
 	protected @Nullable ReComponent containedComponent = null;
 	
+	
+	public AbstractReComponentHolder()
+	{
+		super();
+	}
+	
+	public AbstractReComponentHolder(ReComponent containedComponent)
+	{
+		setContainedComponent(containedComponent);
+	}
+	
+	
 	@Override
 	public ReComponent getContainedComponent()
 	{

@@ -18,6 +18,17 @@ extends AbstractReComponentHolder
 	protected Integer height = 0;
 	
 	
+	public ReComponentPane()
+	{
+		super();
+	}
+	
+	public ReComponentPane(ReComponent containedComponent)
+	{
+		super(containedComponent);
+	}
+	
+	
 	@Override
 	public Integer getWidth()
 	{
