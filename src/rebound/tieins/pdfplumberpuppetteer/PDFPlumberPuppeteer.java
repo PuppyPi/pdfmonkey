@@ -14,6 +14,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.lang.ProcessBuilder.Redirect;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +69,10 @@ implements Closeable
 		
 		if (pythonpath != null)
 			b.environment().put("PYTHONPATH", pythonpath);
+		
+		b.redirectInput(Redirect.PIPE);
+		b.redirectOutput(Redirect.PIPE);
+		b.redirectError(Redirect.INHERIT);
 		
 		Process p = b.start();
 		return new PDFPlumberPuppeteer(p);
