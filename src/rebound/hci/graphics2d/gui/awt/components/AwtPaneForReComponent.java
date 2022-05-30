@@ -14,6 +14,8 @@ import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.PointingMotion
 
 /**
  * An adapter from AWT to {@link ReComponent}!  :D
+ * 
+ * See {@link AwtAndSimpleTrackersUtilities} for mouse button index meanings!
  */
 public class AwtPaneForReComponent
 extends BasicReComponentHoldingAwtComponent
