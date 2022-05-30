@@ -248,6 +248,7 @@ implements TraceableCollage<Integer>
 		IntegerContainer matchingIndex_C = new SimpleIntegerContainer(0);
 		ObjectContainer<Rectangle2D> matchingClippedRectangleInChildSpace_C = new SimpleObjectContainer<>(null);
 		
+		//Todo a faster impl than going through each one XD''
 		forEachChildLayout((index, childBoundsInParentSpace) ->
 		{
 			if (childBoundsInParentSpace.intersects(rectangleInComponentSpace))
@@ -287,6 +288,7 @@ implements TraceableCollage<Integer>
 	{
 		List<RectangleSinglePageLocationResult<Integer>> matches = new ArrayList<>();
 		
+		//Todo a faster impl than going through each one XD''
 		forEachChildLayout((index, childBoundsInParentSpace) ->
 		{
 			if (childBoundsInParentSpace.intersects(rectangleInComponentSpace))
