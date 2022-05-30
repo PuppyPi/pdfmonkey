@@ -84,7 +84,10 @@ implements Closeable
 			throw new UnsupportedOperationException();
 		
 		if (!eq(thisFile, currentOpenFile))
+		{
 			puppeteerConnection.openPDFFile(thisFile.getAbsolutePath());
+			currentOpenFile = thisFile;
+		}
 		
 		List<PairOrdered<PDFPlumberTableMetadata, SimpleTable<String>>> r = puppeteerConnection.findAndExtractTables(page.getPageIndex(), regionInPageSpace == null ? null : ours2theirsBBox(regionInPageSpace, page));
 		
