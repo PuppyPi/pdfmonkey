@@ -32,7 +32,7 @@ implements Closeable
 	{
 		//TODO softcode
 		String python3Interpreter = "python3";
-		File puppet = new File("/fix/eclipse/workspace/PDFMonkey/src-python/pdfplumberpuppeteer.py");
+		File puppet = new File("/fix/eclipse/workspace/PDFMonkey/src-python/pdfplumberpuppet.py");
 		File libDir = new File("/fix/eclipse/workspace/PDFMonkey/src-python/lib");
 		
 		String d = libDir.getAbsolutePath();
