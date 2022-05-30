@@ -13,12 +13,18 @@ import java.awt.Color;
 import java.awt.Container;
 import java.awt.EventQueue;
 import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.geom.Dimension2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
@@ -27,10 +33,14 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import rebound.apps.pdfmonkey.PDFMonkeyBusinessForPDFPlumber.TableData;
 import rebound.apps.pdfmonkey.actualpdfrendering.RasterBasedRendererOnPDF;
 import rebound.apps.pdfmonkey.actualpdfrendering.RendererOnPDF;
 import rebound.bits.DataEncodingUtilities;
@@ -45,6 +55,8 @@ import rebound.hci.graphics2d.gui.awt.AwtAndSimpleTrackersUtilities;
 import rebound.hci.graphics2d.gui.awt.AwtAndSimpleTrackersUtilities.MouseSuite;
 import rebound.hci.graphics2d.gui.awt.components.AwtPaneForReComponent;
 import rebound.hci.graphics2d.gui.awt.components.SolidColorComponent;
+import rebound.hci.graphics2d.gui.recomponent.components.ReComponentCanvasPane;
+import rebound.hci.graphics2d.gui.recomponent.components.ReComponentPane;
 import rebound.hci.graphics2d.gui.recomponent.components.ReComponentZoomerWithMouseInput;
 import rebound.hci.graphics2d.gui.recomponent.components.ReComponentZoomerWithMouseInput.WheelMode;
 import rebound.hci.graphics2d.gui.recomponent.components.RectangleDraggingOverlay;
@@ -54,6 +66,7 @@ import rebound.hci.graphics2d.gui.simpletrackers.buttons.ButtonInputReceiver;
 import rebound.hci.graphics2d.gui.simpletrackers.buttons.SimpleButtonStateTracker;
 import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.DragReceiver;
 import rebound.hci.graphics2d.gui.simpletrackers.pointing.integer.PointingMotionInputReceiver.AbsolutePointingMotionInputReceiver;
+import rebound.hci.graphics2d.java2d.Java2DUtilities;
 import rebound.hci.util.awt.SimpleDragAndDrop;
 import rebound.io.util.FSIOUtilities;
 import rebound.math.SmallIntegerMathUtilities;
@@ -61,35 +74,48 @@ import rebound.math.geom.ints.analogoustojavaawt.IntPoint;
 import rebound.math.geom.ints.analogoustojavaawt.IntRectangle;
 import rebound.testing.WidespreadTestingUtilities;
 import rebound.util.collections.NestedListsSimpleTable;
+import rebound.util.collections.PairOrdered;
 import rebound.util.collections.SimpleTable;
 import rebound.util.crypto.CryptographyAndDigestUtilities;
 import rebound.util.crypto.CryptographyAndDigestUtilities.StandardDigestType;
+import rebound.util.functional.FunctionInterfaces.BinaryProcedure;
 import rebound.util.functional.FunctionInterfaces.UnaryFunction;
+
+//Todo menu checkbox to switch between Tabula and PDFPlumber (disabled when PDFPlumber is unavailable)
 
 public class PDFMonkeyWindow
 extends JFrame
 {
-	private static final long serialVersionUID = 1L;
+	private static final long serialVersionUID = 1l;
 	
 	
 	protected final @Nonnull PDFMonkeyApp app;
 	protected final @Nonnull UnaryFunction<RendererOnPDF, PDFWorldReComponentWrapper> pdfWorldMaker;
+	protected PDFMonkeyBusinessForPDFPlumber monkeyBusinessForPDFPlumber;
+	
+	protected JMenuBar menu;
+	protected JMenu menuSettings;
+	protected JCheckBoxMenuItem menuSettingsUsePDFPlumber;
+	protected boolean addInfolineRectangularly = false;
 	
 	protected final @Nonnull AwtPaneForReComponent awtAdapter;
 	protected final @Nonnull RectangleDraggingOverlay selectionDragger;
+	protected final @Nonnull ReComponentCanvasPane preExtractedTablesCanvasOverlay;
 	protected final @Nonnull ReComponentZoomerWithMouseInput zoomer;
+	protected final @Nonnull ReComponentPane clickPane;
 	protected @Nullable PDFWorldReComponentWrapper pdfWorld;
 	protected @Nullable RendererOnPDF pdf;
 	protected BasicPDFFile pdfFile;
 	protected String pdfFileLocatorFormatted;
 	protected String pdfFileHashFormatted;
-	
-	
+	protected List<List<TableData>> preExtractedTablesCache = new ArrayList<>();  //indexes are page indexes
 	
 	protected SolidColorComponent divider;
 	protected SolidColorComponent pageIndexLabelBackdrop;
 	protected JLabel pageIndexLabel;
 	
+	protected Color preExtractedTableOuterColor = new Color(192, 128, 0);
+	protected Color preExtractedTableCellColor = new Color(192, 192, 0);
 	protected Color dragBoxColorExtractTable = new Color(192, 0, 0);
 	protected Color dragBoxColorExtractText = new Color(64, 64, 192);
 	
@@ -121,6 +147,17 @@ extends JFrame
 	{
 		super("PDF Monkey!! Ook! :D");
 		
+		try
+		{
+			this.monkeyBusinessForPDFPlumber = new PDFMonkeyBusinessForPDFPlumber();
+		}
+		catch (UnsupportedOperationException exc)
+		{
+			System.err.println("PDFPlumber integration failure; using Tabula only.");
+			exc.printStackTrace();
+			this.monkeyBusinessForPDFPlumber = null;
+		}
+		
 		this.app = requireNonNull(app);
 		this.pdfWorldMaker = pdfWorldMaker;
 		
@@ -128,7 +165,32 @@ extends JFrame
 		
 		this.zoomer = new ReComponentZoomerWithMouseInput();
 		
-		this.selectionDragger = new RectangleDraggingOverlay(zoomer, new DragReceiver()
+		this.clickPane = new ReComponentPane()
+		{
+			@Override
+			public void pointingButtonStateChange(int buttonIndex, boolean newState)
+			{
+				if (isClickExtractTableMode())
+				{
+					if (buttonIndex == AwtAndSimpleTrackersUtilities.MouseButtonLeft)
+					{
+						if (newState == false)
+						{
+							IntPoint r = mouseMotionTracker.getCurrentCursorPosition();
+							
+							if (r != null)
+								userRequestedCopyPreExtractedTable(r.x, r.y);
+						}
+						
+						return;
+					}
+				}
+				
+				super.pointingButtonStateChange(buttonIndex, newState);
+			}
+		};
+		
+		this.selectionDragger = new RectangleDraggingOverlay(clickPane, new DragReceiver()
 		{
 			@Override
 			public void dragStarted(int startX, int startY)
@@ -152,6 +214,18 @@ extends JFrame
 			{
 			}
 		});
+		
+		
+		this.preExtractedTablesCanvasOverlay = new ReComponentCanvasPane()
+		{
+			@Override
+			public void paint(Graphics2D g)
+			{
+				super.paint(g);
+				paintPreExtractedTablesOverlay(g);
+			}
+		};
+		
 		
 		awtAdapter.setContainedComponent(selectionDragger);
 		
@@ -211,6 +285,30 @@ extends JFrame
 		
 		
 		
+		menu = new JMenuBar();
+		
+		menuSettings = new JMenu("Settings");
+		
+		menuSettingsUsePDFPlumber = new JCheckBoxMenuItem("Use PDFPlumber?  (usually better table extraction engine)");
+		
+		if (monkeyBusinessForPDFPlumber == null)
+		{
+			menuSettingsUsePDFPlumber.setState(false);
+			menuSettingsUsePDFPlumber.setEnabled(false);
+		}
+		else
+		{
+			menuSettingsUsePDFPlumber.setState(true);
+		}
+		
+		menuSettings.add(menuSettingsUsePDFPlumber);
+		
+		menu.add(menuSettings);
+		
+		this.setJMenuBar(menu);
+		
+		
+		
 		SimpleDragAndDrop.setupSimpleFilesDrag(this, data ->
 		{
 			if (data instanceof Set)
@@ -223,6 +321,28 @@ extends JFrame
 		
 		recalculateStatusBar();
 		doLayout();
+		
+		
+		
+		
+		this.addWindowListener(new WindowAdapter()
+		{
+			@Override
+			public void windowClosed(WindowEvent e)
+			{
+				if (monkeyBusinessForPDFPlumber != null)
+				{
+					try
+					{
+						monkeyBusinessForPDFPlumber.close();
+					}
+					catch (IOException exc)
+					{
+						exc.printStackTrace();
+					}
+				}
+			}
+		});
 	}
 	
 	public @Nullable IntPoint getCurrentMousePositionInPDFWorldSpace()
@@ -232,6 +352,13 @@ extends JFrame
 	
 	
 	
+	/**
+	 * If the user wants us to!  (Definitely false if it's not installed)
+	 */
+	public boolean isUsingPDFPlumber()
+	{
+		return menuSettingsUsePDFPlumber.getState();
+	}
 	
 	
 	
@@ -274,7 +401,9 @@ extends JFrame
 		if (hasPDFLoaded())
 		{
 			clearAllInputActionsDueToPDFFileChanging();
+			this.preExtractedTablesCanvasOverlay.setContainedComponent(null);
 			this.zoomer.setContainedComponent(null);
+			this.clickPane.setContainedComponent(null);
 			this.pdfWorld = null;
 		}
 		
@@ -282,6 +411,9 @@ extends JFrame
 		{
 			this.pdf = pdf;
 			this.pdfFile = pdfFile;
+			
+			this.preExtractedTablesCache.clear();
+			setListSize(this.preExtractedTablesCache, pdf.getNumberOfPages(), null);
 			
 			File f = pdfFile.getLocalFileIfApplicable();
 			this.pdfFileLocatorFormatted = f == null ? "<unknown filename>" : f.getName();
@@ -304,7 +436,9 @@ extends JFrame
 			}
 			
 			this.pdfWorld = newPDFWorld(pdf);
-			zoomer.setContainedComponent(pdfWorld.getComponent());
+			this.preExtractedTablesCanvasOverlay.setContainedComponent(pdfWorld.getComponent());
+			this.zoomer.setContainedComponent(preExtractedTablesCanvasOverlay);
+			this.clickPane.setContainedComponent(zoomer);
 			recalculateStatusBar();
 		}
 		else
@@ -336,9 +470,37 @@ extends JFrame
 		return pdfFile;
 	}
 	
-	public void setPDFFile(BasicPDFFile pdfFile)
+	
+	
+	/**
+	 * @return null on error (eg, library not installed)
+	 */
+	protected @Nullable List<TableData> getOrCachePreExtractedTableOrNullIfLibraryUnsupported(int pageIndex)
 	{
-		this.pdfFile = pdfFile;
+		if (monkeyBusinessForPDFPlumber == null)
+			return null;
+		else
+		{
+			List<TableData> r = preExtractedTablesCache.get(pageIndex);
+			
+			if (r == null)
+			{
+				try
+				{
+					r = monkeyBusinessForPDFPlumber.extractEntirePageAsTables(pdfFile.getPages().get(pageIndex));
+				}
+				catch (Exception exc)
+				{
+					System.err.println("Error pre-extracting tables from PDFPlumber!!:");
+					exc.printStackTrace();
+					return null;
+				}
+				
+				preExtractedTablesCache.set(pageIndex, r);
+			}
+			
+			return r;
+		}
 	}
 	
 	
@@ -440,10 +602,164 @@ extends JFrame
 		}
 	}
 	
+	public @Nullable PointLocationResult<Integer> getPointInPage(int x, int y)
+	{
+		if (hasPDFLoaded())
+		{
+			IntPoint pointInViewerSpace = new IntPoint(x, y);
+			
+			Point2D pointInCanvasSpace = transformPointOPC(zoomer.getCurrentTransformDisplaySpaceToCanvasSpace(), intPointToFloat(pointInViewerSpace));
+			
+			@Nullable PointLocationResult<Integer> r = pdfWorld.findPointInPageSpace(pointInCanvasSpace.getX(), pointInCanvasSpace.getY());
+			
+			return r;
+		}
+		else
+		{
+			return null;
+		}
+	}
+	
+	
+	
+	protected void paintOnPage(Graphics2D graphicsOnCanvas, int pageIndex, BinaryProcedure<Graphics2D, Dimension2D> painterInPageSpace)
+	{
+		Graphics2D gg = (Graphics2D) graphicsOnCanvas.create();
+		
+		Rectangle2D pageInCanvasSpace = pdfWorld.getPageBoundsInWorldSpace(pageIndex);
+		
+		Java2DUtilities.clipAndTranslateGraphics2D(gg, pageInCanvasSpace);
+		
+		painterInPageSpace.f(gg, dims(pageInCanvasSpace.getWidth(), pageInCanvasSpace.getHeight()));
+		
+		gg.dispose();
+	}
 	
 	
 	
 	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	/**
+	 * @return (pageIndex, table)
+	 */
+	public @Nullable PairOrdered<Integer, TableData> getPreExtractedTableDataAtPoint(int x, int y)
+	{
+		@Nullable PointLocationResult<Integer> r = getPointInPage(x, y);
+		
+		if (r != null)
+		{
+			int pageIndexZerobased = r.getChildIdentifier();
+			
+			Point2D pointInPageSpace = pointOrVector2D(r.getPointInPageSpaceX(), r.getPointInPageSpaceY());  //Todo how come we don't have to flip its y coordinate in the left-handed/right-handed coordinates flip?  (y' = height - y)
+			
+			List<TableData> tables = getOrCachePreExtractedTableOrNullIfLibraryUnsupported(pageIndexZerobased);
+			
+			if (tables != null)
+			{
+				for (TableData table : tables)
+				{
+					if (table.box.contains(pointInPageSpace))
+					{
+						return pair(pageIndexZerobased, table);  //I'm sure they never overlap X3
+					}
+				}
+			}
+		}
+		
+		return null;
+	}
+	
+	
+	protected void paintPreExtractedTablesOverlay(Graphics2D graphicsOnCanvas)
+	{
+		if (hasPDFLoaded())
+		{
+			IntRectangle regionInViewerSpace = new IntRectangle(0, 0, zoomer.getWidth(), zoomer.getHeight());
+			
+			Rectangle2D regionInCanvasSpace = transformAxisAlignedRectangleOPC(intRectToFloat(regionInViewerSpace), zoomer.getCurrentTransformDisplaySpaceToCanvasSpace());
+			
+			List<RectangleSinglePageLocationResult<Integer>> rs = pdfWorld.findRectanglesInPageSpace(regionInCanvasSpace);
+			
+			if (!rs.isEmpty())
+			{
+				for (RectangleSinglePageLocationResult<Integer> r : rs)
+				{
+					Rectangle2D regionInPageSpace = r.getRectangleInPageSpace();
+					int pageIndexZerobased = r.getChildIdentifier();
+					
+					//Debugging :3
+					//		paintOnPage(graphicsOnCanvas, pageIndexZerobased, (gg, pageSize) ->
+					//		{
+					//			Java2DUtilities.flipVerticallyInOriginRectangle(gg, pageSize.getHeight());
+					//			gg.setColor(Color.magenta);
+					//			gg.draw(rect(0, 0, 10, 10));
+					//		});
+					
+					List<TableData> tables = getOrCachePreExtractedTableOrNullIfLibraryUnsupported(pageIndexZerobased);
+					
+					if (tables != null)
+					{
+						for (TableData table : tables)
+						{
+							if (table.box.intersects(regionInPageSpace))
+							{
+								paintOnPage(graphicsOnCanvas, pageIndexZerobased, (gg, pageSize) ->
+								{
+									Java2DUtilities.flipVerticallyInOriginRectangle(gg, pageSize.getHeight());
+									
+									gg.setColor(preExtractedTableCellColor);
+									for (Rectangle2D cell : table.cells)
+										gg.draw(cell);
+									
+									gg.setColor(preExtractedTableOuterColor);
+									gg.draw(table.box);
+								});
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	
+	public void userRequestedCopyPreExtractedTable(int x, int y)
+	{
+		if (pdfFile != null)
+		{
+			try
+			{
+				PairOrdered<Integer, TableData> t = getPreExtractedTableDataAtPoint(x, y);
+				
+				if (t != null)
+				{
+					int pageIndexZerobased = t.getA();
+					
+					Rectangle2D regionInPageSpace = t.getB().box;
+					
+					BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
+					
+					SimpleTable<String> table = isUsingPDFPlumber() ? t.getB().contents : PDFMonkeyBusinessForTabula.extractRegionOfPageAsTable(page, regionInPageSpace);
+					
+					copyExtractedTables(singletonList(table), pageIndexZerobased, regionInPageSpace);
+				}
+			}
+			catch (Exception exc)
+			{
+				exc.printStackTrace();
+				JOptionPane.showMessageDialog(null, "Error extracting text from region in page!!: "+exc.getMessage(), "Error in extraction!!", JOptionPane.ERROR_MESSAGE);
+			}
+		}
+	}
 	
 	
 	
@@ -516,14 +832,9 @@ extends JFrame
 			{
 				BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
 				
-				SimpleTable<String> table = PDFMonkeyBusinessForTabula.extractRegionOfPageAsTable(page, regionInPageSpace);
+				List<SimpleTable<String>> tables = isUsingPDFPlumber() ? mapToList(t -> t.contents, monkeyBusinessForPDFPlumber.extractRegionOfPageAsTables(page, regionInPageSpace)) : singletonList(PDFMonkeyBusinessForTabula.extractRegionOfPageAsTable(page, regionInPageSpace));
 				
-				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace);
-				
-				appendRowExpandingIP(table, infoLine, "");
-				
-				setClipboardText(RCSV.serializeRCSV(table));
-				temporarilySetStatusBarText("Done extracting table!");
+				copyExtractedTables(tables, pageIndexZerobased, regionInPageSpace);
 			}
 			catch (Exception exc)
 			{
@@ -539,14 +850,9 @@ extends JFrame
 		{
 			BasicPDFPage page = pdfFile.getPages().get(pageIndexZerobased);
 			
-			SimpleTable<String> table = PDFMonkeyBusinessForTabula.extractEntirePageAsTable(page);
+			List<SimpleTable<String>> tables = isUsingPDFPlumber() ? mapToList(t -> t.contents, monkeyBusinessForPDFPlumber.extractEntirePageAsTables(page)) : singletonList(PDFMonkeyBusinessForTabula.extractEntirePageAsTable(page));
 			
-			List<String> infoLine = produceInfoRecord(pageIndexZerobased, null);
-			
-			appendRowExpandingIP(table, infoLine, "");
-			
-			setClipboardText(RCSV.serializeRCSV(table));
-			temporarilySetStatusBarText("Done extracting table!");
+			copyExtractedTables(tables, pageIndexZerobased, null);
 		}
 		catch (Exception exc)
 		{
@@ -556,6 +862,45 @@ extends JFrame
 	}
 	
 	
+	/**
+	 * @param regionInPageSpace  null means the entire page
+	 */
+	protected void copyExtractedTables(List<SimpleTable<String>> tables, int pageIndexZerobased, @Nullable Rectangle2D regionInPageSpace)
+	{
+		if (tables.isEmpty())
+		{
+			temporarilySetStatusBarText("No tables found to extract.");
+		}
+		else
+		{
+			StringBuilder buff = new StringBuilder();
+			
+			boolean first = true;
+			for (SimpleTable<String> table : tables)
+			{
+				if (first)
+					first = false;
+				else
+					buff.append("\n\n");
+				
+				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace);
+				
+				if (addInfolineRectangularly)
+				{
+					appendRowExpandingIP(table, infoLine, "");
+					buff.append(RCSV.serializeRCSV(table));
+				}
+				else
+				{
+					buff.append(RCSV.serializeRCSV(table));
+					buff.append(RCSV.serializeRCSV(new NestedListsSimpleTable<>(singletonList(infoLine))));
+				}
+			}
+			
+			setClipboardText(buff.toString());
+			temporarilySetStatusBarText("Done extracting table"+(tables.size() > 1 ? "s" : "")+"!");
+		}
+	}
 	
 	
 	
@@ -616,7 +961,7 @@ extends JFrame
 			
 			
 			
-			t += isExtractTableMode() ? "     <drag to extract table!!>" : (isExtractTextMode() ? "     <drag to extract text!!>" : "");
+			t += isClickExtractTableMode() ? "     <click to extract pre-identified table!!>" : (isDragExtractTableMode() ? "     <drag to extract table!!>" : (isDragExtractTextMode() ? "     <drag to extract text!!>" : ""));
 			t += zoomer.isLockMode() ? "" : "     (unlocked scroll)";
 			
 			
@@ -778,7 +1123,7 @@ extends JFrame
 					}
 					
 					
-					else if (keyCode == VK_L)
+					else if (keyCode == VK_Z)
 					{
 						zoomer.setLockMode(!zoomer.isLockMode());
 						recalculateStatusBar();
@@ -796,7 +1141,7 @@ extends JFrame
 					
 					
 					//Changing pagesssss!! :DDD
-					else if (keyCode == VK_J)
+					else if (keyCode == VK_J || keyCode == VK_L)
 					{
 						if (hasPDFLoaded())
 						{
@@ -937,13 +1282,13 @@ extends JFrame
 				
 				
 				
-				boolean extractDragMode = isExtractTableMode() || isExtractTextMode();
+				boolean extractDragMode = isDragExtractTableMode() || isDragExtractTextMode();
 				
 				zoomer.setWheelMode(actionModifierDown ? WheelMode.Zoom : (shiftModifierDown ? WheelMode.X : WheelMode.Y));
 				zoomer.setDraggingEnabled(!extractDragMode);
 				
-				dragOperation = isExtractTextMode() ? extractTextOperation : (isExtractTableMode() ? extractTableOperation : null);
-				selectionDragger.setDragBoxColor(isExtractTextMode() ? dragBoxColorExtractText : (isExtractTableMode() ? dragBoxColorExtractTable : null));
+				dragOperation = isDragExtractTextMode() ? extractTextOperation : (isDragExtractTableMode() ? extractTableOperation : null);
+				selectionDragger.setDragBoxColor(isDragExtractTextMode() ? dragBoxColorExtractText : (isDragExtractTableMode() ? dragBoxColorExtractTable : null));
 				selectionDragger.setDraggingEnabled(extractDragMode);
 				
 				
@@ -1036,16 +1381,20 @@ extends JFrame
 	
 	
 	
-	protected boolean isExtractTextMode()
+	public boolean isDragExtractTextMode()
 	{
-		return keyTracker.getButtonState(VK_X) && !keyTracker.getButtonState(VK_T) && !isActionModifierDown();
+		return keyTracker.getButtonState(VK_X) && !keyTracker.getButtonState(VK_T) && !isActionModifierDown() && isShiftModifierDown();
 	}
 	
-	protected boolean isExtractTableMode()
+	public boolean isDragExtractTableMode()
 	{
-		return keyTracker.getButtonState(VK_T) && !keyTracker.getButtonState(VK_X) && !isActionModifierDown();
+		return keyTracker.getButtonState(VK_T) && !keyTracker.getButtonState(VK_X) && !isActionModifierDown() && isShiftModifierDown();
 	}
 	
+	public boolean isClickExtractTableMode()
+	{
+		return keyTracker.getButtonState(VK_T) && !keyTracker.getButtonState(VK_X) && !isActionModifierDown() && !isShiftModifierDown();
+	}
 	
 	
 	
