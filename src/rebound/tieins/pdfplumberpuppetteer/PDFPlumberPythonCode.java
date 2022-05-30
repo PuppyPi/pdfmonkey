@@ -1,8 +1,10 @@
 package rebound.tieins.pdfplumberpuppetteer;
 
 import java.io.File;
+import rebound.annotations.semantic.meta.dependencies.DependencyDirectory;
 import rebound.util.res.TemporaryAppResourceGroupUnpacker;
 
+@DependencyDirectory("./python")
 public class PDFPlumberPythonCode
 {
 	protected static final TemporaryAppResourceGroupUnpacker unpacker;
