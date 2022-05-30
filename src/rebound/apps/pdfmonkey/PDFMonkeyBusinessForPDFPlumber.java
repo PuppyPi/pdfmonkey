@@ -7,7 +7,9 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import rebound.annotations.semantic.simpledata.Emptyable;
 import rebound.dataformats.pdf.BasicPDFPage;
 import rebound.tieins.pdfplumberpuppetteer.PDFPlumberBoundingBox;
 import rebound.tieins.pdfplumberpuppetteer.PDFPlumberPuppeteer;
@@ -71,12 +73,12 @@ implements Closeable
 	
 	protected File currentOpenFile = null;
 	
-	public List<TableData> extractEntirePageAsTables(BasicPDFPage page) throws Exception
+	public @Nonnull @Emptyable List<TableData> extractEntirePageAsTables(BasicPDFPage page) throws Exception
 	{
 		return extractRegionOfPageAsTables(page, null);
 	}
 	
-	public List<TableData> extractRegionOfPageAsTables(BasicPDFPage page, @Nullable Rectangle2D regionInPageSpace) throws Exception
+	public @Nonnull @Emptyable List<TableData> extractRegionOfPageAsTables(BasicPDFPage page, @Nullable Rectangle2D regionInPageSpace) throws Exception
 	{
 		File thisFile = page.getContainingFile().getLocalFileIfApplicable();
 		
