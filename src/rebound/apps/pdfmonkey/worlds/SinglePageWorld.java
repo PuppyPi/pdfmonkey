@@ -180,9 +180,9 @@ implements PDFWorldReComponentWrapper
 	
 	
 	@Override
-	public Point2D getTopCenterPointOfPageInWorldSpace(Integer childIdentifier)
+	public Rectangle2D getPageBoundsInWorldSpace(Integer childIdentifier)
 	{
-		return pointOrVector2D(getComponent().getWidth() / 2d, 0);
+		return rect(0, 0, getComponent().getWidth(), getComponent().getHeight());
 	}
 	
 	

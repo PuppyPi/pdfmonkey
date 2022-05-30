@@ -350,22 +350,20 @@ implements TraceableCollage<Integer>
 	
 	
 	@Override
-	public Point2D getTopCenterPointOfPageInWorldSpace(Integer childIdentifier)
+	public Rectangle2D getPageBoundsInWorldSpace(Integer childIdentifier)
 	{
 		int y = 0;
-		int w = 0;
 		
 		for (int i = 0; i < childIdentifier; i++)
 		{
 			ReComponent c = children.get(i);
-			w = c.getWidth();
 			int h = c.getHeight();
 			
 			y += h;
 			y += margin;
 		}
 		
-		
-		return pointOrVector2D(w / 2d, y);
+		ReComponent c = children.get(childIdentifier);
+		return rect(0, y, c.getWidth(), c.getHeight());
 	}
 }

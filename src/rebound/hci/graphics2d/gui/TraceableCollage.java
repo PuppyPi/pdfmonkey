@@ -1,6 +1,7 @@
 package rebound.hci.graphics2d.gui;
 
 import static java.util.Objects.*;
+import static rebound.math.geom2d.GeometryUtilities2D.*;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.List;
@@ -117,5 +118,15 @@ public interface TraceableCollage<I>
 	/**
 	 * In World Space not Page Space!
 	 */
-	public Point2D getTopCenterPointOfPageInWorldSpace(I childIdentifier);
+	public default Point2D getTopCenterPointOfPageInWorldSpace(I childIdentifier)  //Todo remove this!
+	{
+		Rectangle2D r = getPageBoundsInWorldSpace(childIdentifier);
+		return pointOrVector2D(r.getCenterX(), r.getMinY());
+	}
+	
+	
+	/**
+	 * In World Space not Page Space!
+	 */
+	public Rectangle2D getPageBoundsInWorldSpace(I childIdentifier);
 }

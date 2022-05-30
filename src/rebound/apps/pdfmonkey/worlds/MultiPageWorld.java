@@ -160,9 +160,20 @@ implements PDFWorldReComponentWrapper
 	
 	
 	@Override
-	public Point2D getTopCenterPointOfPageInWorldSpace(Integer childIdentifier)
+	public Rectangle2D getPageBoundsInWorldSpace(Integer childIdentifier)
 	{
-		return collageInWorldSpace.getTopCenterPointOfPageInWorldSpace(childIdentifier);
+		Rectangle2D r = collageInWorldSpace.getPageBoundsInWorldSpace(childIdentifier);
+		
+		int i = childIdentifier;
+		
+		AbstractBorderReComponent c = childIdentifierToComponent.f(i);
+		
+		Rectangle2D pageBoundsInPageComponentSpace = c.getContainedComponentBounds();
+		
+		//asrt(c.getWidth() == r.getWidth());
+		//asrt(c.getHeight() == r.getHeight());
+		
+		return rect(r.getX() + pageBoundsInPageComponentSpace.getX(), r.getY() + pageBoundsInPageComponentSpace.getY(), pageBoundsInPageComponentSpace.getWidth(), pageBoundsInPageComponentSpace.getHeight());
 	}
 	
 	
