@@ -7,6 +7,7 @@ import static rebound.util.collections.CollectionUtilities.*;
 import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.util.ArrayList;
 import java.util.List;
 import rebound.annotations.semantic.reachability.LiveValue;
 import rebound.exceptions.UnsupportedOptionException;
@@ -278,6 +279,27 @@ implements TraceableCollage<Integer>
 		{
 			return null;
 		}
+	}
+	
+	
+	@Override
+	public List<RectangleSinglePageLocationResult<Integer>> findRectanglesInPageSpace(Rectangle2D rectangleInComponentSpace)
+	{
+		List<RectangleSinglePageLocationResult<Integer>> matches = new ArrayList<>();
+		
+		forEachChildLayout((index, childBoundsInParentSpace) ->
+		{
+			if (childBoundsInParentSpace.intersects(rectangleInComponentSpace))
+			{
+				Rectangle2D clippedInParentSpace = intersectionOfRectanglesOPC(rectangleInComponentSpace, childBoundsInParentSpace);
+				
+				Rectangle2D p = translateOPC(clippedInParentSpace, pointOrVector2D(-childBoundsInParentSpace.getX(), -childBoundsInParentSpace.getY()));
+				
+				matches.add(new RectangleSinglePageLocationResult<Integer>(index, p));
+			}
+		});
+		
+		return matches;
 	}
 	
 	

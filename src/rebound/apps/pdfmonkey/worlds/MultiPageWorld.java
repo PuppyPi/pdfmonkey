@@ -112,6 +112,29 @@ implements PDFWorldReComponentWrapper
 	
 	
 	@Override
+	public List<RectangleSinglePageLocationResult<Integer>> findRectanglesInPageSpace(Rectangle2D rectangleInComponentSpace)
+	{
+		List<RectangleSinglePageLocationResult<Integer>> rs = collageInWorldSpace.findRectanglesInPageSpace(rectangleInComponentSpace);
+		
+		return mapToList(r ->
+		{
+			int i = r.getChildIdentifier();
+			
+			AbstractBorderReComponent c = childIdentifierToComponent.f(i);
+			
+			Rectangle2D rectangleInPageComponentSpace = c.transformRectangleFloatingFromOurSpaceToContainedSpace(r.getRectangleInPageSpace());
+			
+			PDFPageComponentWrapper pageComponentWrapper = childIdentifierToPageComponentWrapper.f(i);
+			
+			Rectangle2D rectangleInPageSpace = pageComponentWrapper.transformRectangleFromComponentSpaceToPageSpace(rectangleInPageComponentSpace);
+			
+			return new RectangleSinglePageLocationResult<Integer>(i, rectangleInPageSpace);
+			
+		}, rs);
+	}
+	
+	
+	@Override
 	public Integer getArbitraryPageInRectangle(Rectangle2D regionInComponentSpace)
 	{
 		Integer i = collageInWorldSpace.getArbitraryPageInRectangle(regionInComponentSpace);

@@ -1,5 +1,6 @@
 package rebound.apps.pdfmonkey.worlds;
 
+import static java.util.Collections.*;
 import static java.util.Objects.*;
 import static rebound.math.SmallIntegerMathUtilities.*;
 import static rebound.math.geom2d.GeometryUtilities2D.*;
@@ -7,6 +8,7 @@ import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.util.List;
 import javax.annotation.Nonnull;
 import rebound.annotations.semantic.allowedoperations.WritableValue;
 import rebound.apps.pdfmonkey.BorderMaker;
@@ -121,7 +123,12 @@ implements PDFWorldReComponentWrapper
 		}
 	}
 	
-	
+	@Override
+	public List<RectangleSinglePageLocationResult<Integer>> findRectanglesInPageSpace(Rectangle2D rectangleInComponentSpace)
+	{
+		RectangleSinglePageLocationResult r = findRectangleInPageSpace(rectangleInComponentSpace);
+		return r == null ? emptyList() : singletonList(r);
+	}
 	
 	
 	

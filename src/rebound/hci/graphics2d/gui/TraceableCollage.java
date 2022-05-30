@@ -3,8 +3,10 @@ package rebound.hci.graphics2d.gui;
 import static java.util.Objects.*;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.util.List;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import rebound.annotations.semantic.simpledata.Emptyable;
 
 /**
  * You've got a bunch of things (graphically) inside a big thing (eg, a set of pages in a pdf file), possibly one next to another or in a grid or etc.
@@ -79,6 +81,8 @@ public interface TraceableCollage<I>
 	 * @return null ifF it's not inside any page OR it covers multiple pages!
 	 */
 	public @Nullable RectangleSinglePageLocationResult<I> findRectangleInPageSpace(Rectangle2D rectangleInComponentSpace);
+	
+	public @Nonnull @Emptyable List<RectangleSinglePageLocationResult<I>> findRectanglesInPageSpace(Rectangle2D rectangleInComponentSpace);
 	
 	
 	public static class RectangleSinglePageLocationResult<I>
