@@ -18,8 +18,6 @@ import rebound.hci.util.awt.AWTEventDispatchingThread;
 import rebound.hci.util.awt.JavaGUIUtilities;
 import rebound.util.functional.FunctionInterfaces.UnaryFunction;
 
-//TODO repaint on mouse wheel scrolling ^^'
-
 //Todo at least an indicating/display-only scrollbarish indicator on the side even if it doesn't have input abilities
 //Todo arrow keys moving it a little bit
 
