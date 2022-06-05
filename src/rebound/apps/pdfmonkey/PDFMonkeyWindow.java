@@ -130,7 +130,7 @@ extends JFrame
 	
 	public static interface DragOperation
 	{
-		public void run(int pageIndexZerobased, Rectangle2D regionInPageSpace);
+		public void run(int pageIndexZerobased, Rectangle2D regionInPageSpace, boolean automaticRegionDetection);
 	}
 	
 	protected DragOperation dragOperation = null;
@@ -594,7 +594,7 @@ extends JFrame
 					
 					int pageIndexZerobased = r.getChildIdentifier();
 					
-					dragOperation.run(pageIndexZerobased, regionInPageSpace);
+					dragOperation.run(pageIndexZerobased, regionInPageSpace, false);
 					
 					this.repaint();
 				}
@@ -750,7 +750,7 @@ extends JFrame
 					
 					SimpleTable<String> table = isUsingPDFPlumber() ? t.getB().contents : PDFMonkeyBusinessForTabula.extractRegionOfPageAsTable(page, regionInPageSpace);
 					
-					copyExtractedTables(singletonList(table), pageIndexZerobased, regionInPageSpace);
+					copyExtractedTables(singletonList(table), pageIndexZerobased, regionInPageSpace, true);
 				}
 			}
 			catch (Exception exc)
@@ -769,16 +769,18 @@ extends JFrame
 	
 	
 	
-	public List<String> produceInfoRecord(int pageIndexZerobased, @Nullable Rectangle2D regionInPageSpace)
+	public List<String> produceInfoRecord(int pageIndexZerobased, @Nullable Rectangle2D regionInPageSpace, boolean automaticRegionDetection)
 	{
 		if (regionInPageSpace == null)
 			return listof(pdfFileLocatorFormatted, pdfFileHashFormatted, Integer.toString(pageIndexZerobased + 1));
-		else
+		else if (!automaticRegionDetection)
 			return listof(pdfFileLocatorFormatted, pdfFileHashFormatted, Integer.toString(pageIndexZerobased + 1), Double.toString(regionInPageSpace.getX()), Double.toString(regionInPageSpace.getY()), Double.toString(regionInPageSpace.getWidth()), Double.toString(regionInPageSpace.getHeight()));
+		else
+			return listof(pdfFileLocatorFormatted, pdfFileHashFormatted, Integer.toString(pageIndexZerobased + 1), Double.toString(regionInPageSpace.getX()), Double.toString(regionInPageSpace.getY()), Double.toString(regionInPageSpace.getWidth()), Double.toString(regionInPageSpace.getHeight()), "autobounds");
 	}
 	
 	
-	public void extractText(int pageIndexZerobased, Rectangle2D regionInPageSpace)
+	public void extractText(int pageIndexZerobased, Rectangle2D regionInPageSpace, boolean automaticRegionDetection)
 	{
 		if (pdfFile != null)
 		{
@@ -788,7 +790,7 @@ extends JFrame
 				
 				String result = PDFMonkeyBusinessForTabula.extractRegionOfPageAsText(page, regionInPageSpace);
 				
-				String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, regionInPageSpace))));
+				String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, regionInPageSpace, automaticRegionDetection))));
 				String finalResult = result.trim() + "\n" + infoLine;
 				
 				setClipboardText(finalResult);
@@ -810,7 +812,7 @@ extends JFrame
 			
 			String result = PDFMonkeyBusinessForTabula.extractEntirePageAsText(page);
 			
-			String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, null))));
+			String infoLine = RCSV.serializeRCSV(new NestedListsSimpleTable<String>(singletonList(produceInfoRecord(pageIndexZerobased, null, false))));
 			String finalResult = result.trim() + "\n" + infoLine;
 			
 			setClipboardText(finalResult);
@@ -824,7 +826,7 @@ extends JFrame
 	}
 	
 	
-	public void extractTable(int pageIndexZerobased, Rectangle2D regionInPageSpace)
+	public void extractTable(int pageIndexZerobased, Rectangle2D regionInPageSpace, boolean automaticRegionDetection)
 	{
 		if (pdfFile != null)
 		{
@@ -834,7 +836,7 @@ extends JFrame
 				
 				List<SimpleTable<String>> tables = isUsingPDFPlumber() ? mapToList(t -> t.contents, monkeyBusinessForPDFPlumber.extractRegionOfPageAsTables(page, regionInPageSpace)) : singletonList(PDFMonkeyBusinessForTabula.extractRegionOfPageAsTable(page, regionInPageSpace));
 				
-				copyExtractedTables(tables, pageIndexZerobased, regionInPageSpace);
+				copyExtractedTables(tables, pageIndexZerobased, regionInPageSpace, automaticRegionDetection);
 			}
 			catch (Exception exc)
 			{
@@ -852,7 +854,7 @@ extends JFrame
 			
 			List<SimpleTable<String>> tables = isUsingPDFPlumber() ? mapToList(t -> t.contents, monkeyBusinessForPDFPlumber.extractEntirePageAsTables(page)) : singletonList(PDFMonkeyBusinessForTabula.extractEntirePageAsTable(page));
 			
-			copyExtractedTables(tables, pageIndexZerobased, null);
+			copyExtractedTables(tables, pageIndexZerobased, null, false);
 		}
 		catch (Exception exc)
 		{
@@ -865,7 +867,7 @@ extends JFrame
 	/**
 	 * @param regionInPageSpace  null means the entire page
 	 */
-	protected void copyExtractedTables(List<SimpleTable<String>> tables, int pageIndexZerobased, @Nullable Rectangle2D regionInPageSpace)
+	protected void copyExtractedTables(List<SimpleTable<String>> tables, int pageIndexZerobased, @Nullable Rectangle2D regionInPageSpace, boolean automaticRegionDetection)
 	{
 		if (tables.isEmpty())
 		{
@@ -883,7 +885,7 @@ extends JFrame
 				else
 					buff.append("\n\n");
 				
-				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace);
+				List<String> infoLine = produceInfoRecord(pageIndexZerobased, regionInPageSpace, automaticRegionDetection);
 				
 				if (addInfolineRectangularly)
 				{
